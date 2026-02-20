@@ -193,8 +193,11 @@ let W, H, S = 1;
 let BIRD_R, PIPE_W, BASE_GAP, GROUND_H, BASE_PIPE_SPEED, GRAVITY, BASE_FLAP;
 let STARS = [], FAR_CLOUDS = [], MID_CLOUDS = [], NEAR_CLOUDS = [];
 let MOUNTAINS_FAR = [], MOUNTAINS_NEAR = [], BUSHES = [];
+let FIREFLIES = [], LEAVES = [], DUST = [], FG_BRANCHES = [];
 let groundOffset = 0;
-let particles = [], popups = [];
+let particles = [], popups = [], ringPulses = [], trailDots = [];
+let camX = 0, camY = 0, camT = 0;
+let windNode = null;
 let shakeAmt = 0, shakeX = 0, shakeY = 0;
 let wingAngle = 0, wingDir = 1, flapBoost = false;
 let birdIdleT = 0;
@@ -404,41 +407,57 @@ function startAmbient() {
     masterGain.gain.linearRampToValueAtTime(0.18, ac.currentTime + 3);
     masterGain.connect(ac.destination);
 
-    const notes = [220, 277.18, 329.63, 369.99]; // Am chord
+    const notes = [220, 277.18, 329.63, 369.99];
     const oscs  = notes.map(freq => {
       const o = ac.createOscillator();
       const g = ac.createGain();
-      o.type = 'sine';
-      o.frequency.value = freq;
+      o.type = 'sine'; o.frequency.value = freq;
       g.gain.value = 0.25;
-      o.connect(g); g.connect(masterGain);
-      o.start();
+      o.connect(g); g.connect(masterGain); o.start();
       return o;
     });
 
-    // Slow LFO-style pulse on the master gain
+    // Wind layer — filtered noise via AudioWorklet fallback using oscillator
+    const windGain = ac.createGain();
+    windGain.gain.setValueAtTime(0.0, ac.currentTime);
+    windGain.gain.linearRampToValueAtTime(0.08, ac.currentTime + 4);
+    windGain.connect(ac.destination);
+    const windOscs = [180, 200, 220].map((f,i) => {
+      const o = ac.createOscillator();
+      const g = ac.createGain();
+      o.type = 'sawtooth'; o.frequency.value = f + i*7;
+      g.gain.value = 0.08;
+      o.connect(g); g.connect(windGain); o.start();
+      return o;
+    });
+    windNode = { windGain, windOscs };
+
     let t = 0;
     const pulse = setInterval(() => {
       if (!ambientNodes) { clearInterval(pulse); return; }
       t += 0.04;
-      const speed = 1 + (typeof difficulty === 'number' ? difficulty * 0.5 : 0);
-      masterGain.gain.setTargetAtTime(0.14 + 0.06 * Math.sin(t * speed), ac.currentTime, 0.3);
+      const speed = 1 + (typeof difficulty==='number' ? difficulty*0.5 : 0);
+      masterGain.gain.setTargetAtTime(0.14 + 0.06*Math.sin(t*speed), ac.currentTime, 0.3);
+      // Wind swell tied to difficulty
+      if (windNode) windGain.gain.setTargetAtTime(0.05 + 0.05*(typeof difficulty==='number'?difficulty:0), ac.currentTime, 0.8);
     }, 100);
 
-    ambientNodes = { oscs, masterGain, pulse };
+    ambientNodes = { oscs, masterGain, pulse, windOscs };
   } catch(e) {}
 }
 
 function stopAmbient() {
   if (!ambientNodes) return;
   try {
-    ambientNodes.masterGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 1.5);
+    ambientNodes.masterGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime+1.5);
+    if (windNode) { windNode.windGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime+1.5); }
     setTimeout(() => {
-      ambientNodes.oscs.forEach(o => { try { o.stop(); } catch(e) {} });
+      ambientNodes.oscs.forEach(o=>{try{o.stop();}catch(e){}});
+      if (ambientNodes.windOscs) ambientNodes.windOscs.forEach(o=>{try{o.stop();}catch(e){}});
     }, 1600);
   } catch(e) {}
   clearInterval(ambientNodes.pulse);
-  ambientNodes = null;
+  ambientNodes = null; windNode = null;
 }
 
 // ─── Background assets ────────────────────────────────────────────
@@ -479,6 +498,48 @@ function rebuildBgAssets() {
     x: (i/12)*W*1.4,
     r: Math.random()*14*S+8*S,
     spd: BASE_PIPE_SPEED * 0.6
+  }));
+
+  // Fireflies — slow glowing dots in the mid-sky
+  FIREFLIES = Array.from({length:22}, () => ({
+    x: Math.random()*W, y: Math.random()*(H*0.65)+H*0.05,
+    vx: (Math.random()-.5)*0.35, vy: (Math.random()-.5)*0.2,
+    r: Math.random()*2.2+1.0,
+    phase: Math.random()*Math.PI*2,
+    spd: Math.random()*0.04+0.02,
+    color: Math.random()<0.6 ? '#c8ffb0' : '#ffe080'
+  }));
+
+  // Floating leaves
+  LEAVES = Array.from({length:10}, () => ({
+    x: Math.random()*W*1.5, y: Math.random()*(H*0.7)+H*0.05,
+    vx: -(Math.random()*0.7+0.3),
+    vy: Math.random()*0.18-0.09,
+    rot: Math.random()*Math.PI*2,
+    rotV: (Math.random()-.5)*0.04,
+    size: Math.random()*5*S+3*S,
+    alpha: Math.random()*0.4+0.2,
+    wobble: Math.random()*Math.PI*2,
+    wobbleSpd: Math.random()*0.03+0.01
+  }));
+
+  // Dust motes — tiny slow drifters
+  DUST = Array.from({length:30}, () => ({
+    x: Math.random()*W, y: Math.random()*H*0.8,
+    vx: -(Math.random()*0.25+0.05),
+    vy: (Math.random()-.5)*0.08,
+    r: Math.random()*1.4+0.3,
+    alpha: Math.random()*0.18+0.06,
+    phase: Math.random()*Math.PI*2
+  }));
+
+  // Foreground branches — silhouettes that pass in front
+  FG_BRANCHES = Array.from({length:3}, (_,i) => ({
+    x: (i/3)*W*1.8 + W,
+    y: Math.random()*(H*0.35),
+    w: Math.random()*W*0.35+W*0.2,
+    spd: BASE_PIPE_SPEED*1.55,
+    side: Math.random()<0.5?'top':'bottom'
   }));
 }
 
@@ -530,7 +591,47 @@ function drawParticles() {
   ctx.globalAlpha = 1;
 }
 
-// ─── Score popups ─────────────────────────────────────────────────
+// ─── Ring pulses (pipe-pass burst) ───────────────────────────────
+function spawnRing(x, y, color='#FFD166') {
+  ringPulses.push({ x, y, r:0, maxR: BIRD_R*3.5, life:1, color });
+}
+
+function tickRings() {
+  ringPulses.forEach(r => { r.r += 4*S; r.life -= 0.045; });
+  ringPulses = ringPulses.filter(r => r.life>0);
+}
+
+function drawRings() {
+  ringPulses.forEach(r => {
+    ctx.save();
+    ctx.globalAlpha = r.life * 0.7;
+    ctx.strokeStyle = r.color;
+    ctx.lineWidth   = 2.5 * r.life;
+    ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI*2); ctx.stroke();
+    ctx.restore();
+  });
+}
+
+// ─── Bird glow trail ─────────────────────────────────────────────
+function spawnTrail(x, y) {
+  trailDots.push({ x, y, r: BIRD_R*0.55, life:1 });
+}
+
+function tickTrail() {
+  trailDots.forEach(t => { t.life -= 0.07; t.r *= 0.92; });
+  trailDots = trailDots.filter(t => t.life>0);
+}
+
+function drawTrail() {
+  const sk = SKINS[activeSkin];
+  trailDots.forEach(t => {
+    ctx.save();
+    ctx.globalAlpha = t.life * 0.28;
+    ctx.fillStyle = sk.body[2];
+    ctx.beginPath(); ctx.arc(t.x, t.y, t.r, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  });
+}
 function addPopup(x, y, text, color='#FFD166') {
   popups.push({ x, y, a:1, vy:-1.8, text, color });
 }
@@ -598,6 +699,8 @@ function initGame() {
   sessionStart  = performance.now();
   particles     = [];
   popups        = [];
+  ringPulses    = [];
+  trailDots     = [];
   groundOffset  = 0;
   gameRunning   = true;
   gameStarted   = true;
@@ -634,14 +737,14 @@ canvas.addEventListener('pointerdown', e => {
 function spawnPipe(ts) {
   const minTop = GROUND_H + gapSize*0.55;
   const maxTop = H - GROUND_H - gapSize - GROUND_H*0.55;
+  // Slight random hue shift per pipe for visual variety
+  const tints = [null, 'rgba(0,60,20,.18)', 'rgba(0,30,60,.15)', 'rgba(40,0,10,.12)', null];
   pipes.push({
     x: W + PIPE_W + 2,
     gapTop: Math.random()*(maxTop-minTop)+minTop,
-    gap: gapSize,   // snapshot gap at spawn time — fixes floating pipe bug
-    passed: false,
-    alpha: 0,
-    warn: false,
-    nearMissChecked: false
+    gap: gapSize,
+    passed: false, alpha: 0, warn: false, nearMissChecked: false,
+    tint: tints[Math.floor(Math.random()*tints.length)]
   });
   lastPipeTime = ts;
 }
@@ -792,6 +895,10 @@ function update(ts) {
       p.passed = true;
       score++;
       SFX.score();
+      // Ring burst + sparkle at pipe center
+      spawnRing(p.x+PIPE_W/2, p.gapTop+p.gap/2);
+      spawnParticles(bird.x, bird.y, 6, ['#FFD166','#fff','#86efac','#fbbf24'], 0.6);
+      triggerShake(1.5*S); // tiny nudge on score
 
       const now = performance.now();
       if (lastPipePassTime && (now-lastPipePassTime)<COMBO_WINDOW) {
@@ -817,7 +924,41 @@ function update(ts) {
     }
   }
 
-  tickShake(); tickParticles(); tickPopups();
+  tickShake(); tickParticles(); tickPopups(); tickRings(); tickTrail();
+
+  // Micro camera — very subtle drift and sway
+  camT += 0.018;
+  camX = Math.sin(camT*0.7) * 1.2 * S;
+  camY = Math.sin(camT*1.1) * 1.0 * S + shakeX;
+
+  // Bird glow trail every 2 frames
+  if (gameRunning && Math.round(performance.now()/16)%2===0) {
+    spawnTrail(bird.x, bird.y);
+  }
+
+  // World particle tick — fireflies, leaves, dust
+  FIREFLIES.forEach(f => {
+    f.x += f.vx; f.y += f.vy;
+    f.phase += f.spd;
+    if (f.x < -10) f.x = W+10;
+    if (f.x > W+10) f.x = -10;
+    if (f.y < 0) f.y = H*0.65;
+    if (f.y > H*0.7) f.y = 0;
+  });
+  LEAVES.forEach(l => {
+    l.x += l.vx; l.y += l.vy + Math.sin(l.wobble)*0.15;
+    l.wobble += l.wobbleSpd; l.rot += l.rotV;
+    if (l.x < -20) l.x = W + 20;
+  });
+  DUST.forEach(d => {
+    d.x += d.vx; d.y += d.vy;
+    d.phase += 0.02;
+    if (d.x < -5) d.x = W+5;
+  });
+  FG_BRANCHES.forEach(b => {
+    b.x -= b.spd;
+    if (b.x+b.w < 0) b.x = W + b.w + Math.random()*W*0.5;
+  });
 }
 
 // ─── Draw sky + background ────────────────────────────────────────
@@ -909,18 +1050,104 @@ function drawGround() {
   });
 }
 
-// ─── Render pipe  (uses p.gap — the snapshot — not live gapSize) ──
+// ─── World ambient particles ──────────────────────────────────────
+function drawFireflies(ts) {
+  FIREFLIES.forEach(f => {
+    const pulse = 0.4 + 0.6*Math.sin(f.phase);
+    ctx.save();
+    ctx.globalAlpha = pulse * 0.75;
+    // Glow halo
+    const g = ctx.createRadialGradient(f.x,f.y,0,f.x,f.y,f.r*4);
+    g.addColorStop(0, f.color); g.addColorStop(1,'transparent');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(f.x,f.y,f.r*4,0,Math.PI*2); ctx.fill();
+    // Core dot
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(f.x,f.y,f.r*0.6,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  });
+}
+
+function drawLeaves() {
+  LEAVES.forEach(l => {
+    ctx.save();
+    ctx.globalAlpha = l.alpha;
+    ctx.translate(l.x, l.y); ctx.rotate(l.rot);
+    ctx.fillStyle = '#4ade80';
+    ctx.beginPath();
+    ctx.ellipse(0,0,l.size,l.size*0.45,0,0,Math.PI*2);
+    ctx.fill();
+    // Vein
+    ctx.strokeStyle = 'rgba(0,0,0,.2)'; ctx.lineWidth = 0.7;
+    ctx.beginPath(); ctx.moveTo(-l.size,0); ctx.lineTo(l.size,0); ctx.stroke();
+    ctx.restore();
+  });
+}
+
+function drawDust() {
+  DUST.forEach(d => {
+    const a = d.alpha * (0.6 + 0.4*Math.sin(d.phase));
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.fillStyle = 'rgba(255,230,180,1)';
+    ctx.beginPath(); ctx.arc(d.x,d.y,d.r,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  });
+}
+
+function drawForeground() {
+  FG_BRANCHES.forEach(b => {
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = '#0f0520';
+    if (b.side === 'top') {
+      // Drooping branch from top
+      ctx.beginPath();
+      ctx.moveTo(b.x, 0);
+      ctx.quadraticCurveTo(b.x + b.w*0.4, b.y*0.6, b.x+b.w, b.y);
+      ctx.lineTo(b.x+b.w, 0); ctx.closePath(); ctx.fill();
+      // Hanging tendrils
+      for (let i=0;i<4;i++) {
+        const tx = b.x + b.w*(0.2+i*0.2);
+        const ty = b.y*(0.5+i*0.12);
+        ctx.strokeStyle='rgba(15,5,32,.6)'; ctx.lineWidth=2.5-i*0.4;
+        ctx.beginPath(); ctx.moveTo(tx,ty);
+        ctx.quadraticCurveTo(tx+8,ty+16+i*8,tx-4,ty+28+i*10); ctx.stroke();
+      }
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(b.x, H);
+      ctx.quadraticCurveTo(b.x + b.w*0.4, H-b.y*0.5, b.x+b.w, H-b.y);
+      ctx.lineTo(b.x+b.w, H); ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+  });
+
+  // Subtle fog vignette at screen edges
+  const fog = ctx.createLinearGradient(0,0,W*0.18,0);
+  fog.addColorStop(0,'rgba(10,3,30,.32)'); fog.addColorStop(1,'transparent');
+  ctx.fillStyle=fog; ctx.fillRect(0,0,W*0.18,H);
+  const fog2 = ctx.createLinearGradient(W,0,W*0.82,0);
+  fog2.addColorStop(0,'rgba(10,3,30,.28)'); fog2.addColorStop(1,'transparent');
+  ctx.fillStyle=fog2; ctx.fillRect(W*0.82,0,W*0.18,H);
+}
 function renderPipe(p) {
   ctx.save(); ctx.globalAlpha=p.alpha;
   const capH=Math.round(24*S), capE=Math.round(14*S);
 
-  // top pipe: from y=0 down to gapTop
   drawPipeSection(p.x, 0, PIPE_W, p.gapTop, true, capH, capE, p.warn);
 
-  // bottom pipe: extend all the way to H so the ground always fully covers it
   const bY = p.gapTop + p.gap;
   const bH = H - bY;
   drawPipeSection(p.x, bY, PIPE_W, bH, false, capH, capE, p.warn);
+
+  // Per-pipe tint overlay for visual variety
+  if (p.tint) {
+    ctx.fillStyle = p.tint;
+    ctx.fillRect(p.x, 0, PIPE_W, p.gapTop);
+    ctx.fillRect(p.x, bY, PIPE_W, bH);
+  }
 
   ctx.restore();
 
@@ -1119,7 +1346,13 @@ function idleLoop() {
   function frame(ts) {
     if (gameRunning) { idleAnimId = null; return; }
     birdIdleT += 0.04;
+    // Keep world particles alive on menu
+    FIREFLIES.forEach(f=>{f.x+=f.vx;f.y+=f.vy;f.phase+=f.spd;if(f.x<-10)f.x=W+10;if(f.x>W+10)f.x=-10;});
+    LEAVES.forEach(l=>{l.x+=l.vx;l.wobble+=l.wobbleSpd;l.rot+=l.rotV;if(l.x<-20)l.x=W+20;});
+    DUST.forEach(d=>{d.x+=d.vx;d.phase+=0.02;if(d.x<-5)d.x=W+5;});
     drawBg(ts);
+    drawDust(); drawFireflies(ts); drawLeaves();
+    drawForeground();
     renderBird(W*.22, H*.44 + Math.sin(birdIdleT)*6, -1);
     idleAnimId = requestAnimationFrame(frame);
   }
@@ -1128,13 +1361,22 @@ function idleLoop() {
 
 // ─── Main game loop ───────────────────────────────────────────────
 function draw(ts) {
-  ctx.save(); ctx.translate(shakeX,shakeY);
+  ctx.save();
+  // Micro-camera offset layered on top of shake
+  ctx.translate(shakeX + camX, shakeY + camY);
   drawBg(ts);
+  // World ambient particles (behind pipes, behind bird)
+  drawDust();
+  drawFireflies(ts);
+  drawLeaves();
   pipes.forEach(p=>renderPipe(p));
-  // Redraw ground on top of pipes so bottom pipe is never visible below ground
+  drawRings();
   drawGround();
-  renderBird(bird.x,bird.y,bird.vy);
+  drawTrail();
+  renderBird(bird.x, bird.y, bird.vy);
   drawParticles(); drawPopups();
+  // Foreground depth layer — in front of everything
+  drawForeground();
   ctx.restore();
   drawHUD();
 }
