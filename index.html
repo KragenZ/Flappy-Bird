@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Flappy Bird</title>
+  <style>
+    /* ── Reset & Page Layout ── */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: #1a1a2e;           /* dark navy background */
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      font-family: 'Segoe UI', sans-serif;
+      user-select: none;             /* prevent text highlight on click */
+    }
+
+    h1 {
+      color: #f5c518;
+      font-size: 2rem;
+      letter-spacing: 3px;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+    }
+
+    /* ── Canvas Wrapper ── */
+    #gameWrapper {
+      position: relative;           /* lets us overlay the overlay div */
+    }
+
+    canvas {
+      display: block;
+      border: 3px solid #f5c518;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    /* ── Overlay (Start / Game Over screen) ── */
+    #overlay {
+      position: absolute;
+      inset: 0;                      /* fill the wrapper */
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.55);
+      border-radius: 6px;
+      color: #fff;
+      text-align: center;
+      gap: 14px;
+    }
+
+    #overlay h2 {
+      font-size: 2.2rem;
+      color: #f5c518;
+    }
+
+    #overlay p {
+      font-size: 1.1rem;
+      color: #ddd;
+    }
+
+    #overlay .score-display {
+      font-size: 1.4rem;
+      color: #fff;
+      font-weight: bold;
+    }
+
+    /* ── Start / Restart Button ── */
+    #startBtn {
+      margin-top: 8px;
+      padding: 12px 32px;
+      font-size: 1.1rem;
+      font-weight: bold;
+      background: #f5c518;
+      color: #1a1a2e;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: transform 0.1s, background 0.2s;
+    }
+
+    #startBtn:hover {
+      background: #ffd84d;
+      transform: scale(1.05);
+    }
+
+    /* Hide overlay when game is running */
+    #overlay.hidden {
+      display: none;
+    }
+
+    /* ── Hint text below canvas ── */
+    #hint {
+      margin-top: 12px;
+      color: #aaa;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>🐦 Flappy Bird</h1>
+
+  <div id="gameWrapper">
+    <!-- The game is drawn here -->
+    <canvas id="gameCanvas" width="400" height="600"></canvas>
+
+    <!-- Shown before the game starts and after game over -->
+    <div id="overlay">
+      <h2 id="overlayTitle">Flappy Bird</h2>
+      <p id="overlayMsg">Navigate the bird through the pipes!</p>
+      <p class="score-display" id="overlayScore"></p>
+      <button id="startBtn">▶ Start Game</button>
+    </div>
+  </div>
+
+  <p id="hint">Space / Click to flap</p>
+
+  <script>
+    // ─────────────────────────────────────────────
+    //  SETUP – grab canvas and 2D drawing context
+    // ─────────────────────────────────────────────
+    const canvas  = document.getElementById('gameCanvas');
+    const ctx     = canvas.getContext('2d');
+
+    const overlay      = document.getElementById('overlay');
+    const overlayTitle = document.getElementById('overlayTitle');
+    const overlayMsg   = document.getElementById('overlayMsg');
+    const overlayScore = document.getElementById('overlayScore');
+    const startBtn     = document.getElementById('startBtn');
+
+    // ─────────────────────────────────────────────
+    //  CONSTANTS  (tweak these to change difficulty)
+    // ─────────────────────────────────────────────
+    const GRAVITY      = 0.45;   // how fast the bird falls each frame
+    const FLAP_POWER   = -8.5;   // upward velocity when the player flaps
+    const PIPE_SPEED   = 2.8;    // how fast pipes move left
+    const PIPE_WIDTH   = 60;     // width of each pipe
+    const GAP_SIZE     = 160;    // vertical space between top & bottom pipe
+    const PIPE_INTERVAL= 1600;   // milliseconds between new pipe spawns
+    const BIRD_SIZE    = 28;     // radius of the bird circle
+
+    // ─────────────────────────────────────────────
+    //  GAME STATE VARIABLES
+    // ─────────────────────────────────────────────
+    let bird;           // the bird object  { x, y, vy }
+    let pipes;          // array of pipe objects { x, gapTop }
+    let score;          // current score (number of pipes passed)
+    let gameRunning;    // true while game is in progress
+    let animFrameId;    // requestAnimationFrame handle (so we can cancel it)
+    let lastPipeTime;   // timestamp of when last pipe was spawned
+
+    // ─────────────────────────────────────────────
+    //  INITIALISE (or reset) everything
+    // ─────────────────────────────────────────────
+    function initGame() {
+      // Place the bird in the centre-left of the canvas
+      bird = {
+        x:  80,
+        y:  canvas.height / 2,
+        vy: 0    // vertical velocity (pixels per frame)
+      };
+
+      pipes       = [];
+      score       = 0;
+      gameRunning = true;
+      lastPipeTime = performance.now();
+
+      // Hide the overlay so the canvas is visible
+      overlay.classList.add('hidden');
+
+      // Cancel any previous animation loop before starting a new one
+      cancelAnimationFrame(animFrameId);
+
+      // Kick off the game loop
+      animFrameId = requestAnimationFrame(gameLoop);
+    }
+
+    // ─────────────────────────────────────────────
+    //  FLAP  – give the bird an upward push
+    // ─────────────────────────────────────────────
+    function flap() {
+      if (!gameRunning) return;   // ignore input on game-over screen
+      bird.vy = FLAP_POWER;       // set upward velocity
+    }
+
+    // ─────────────────────────────────────────────
+    //  INPUT – spacebar and mouse click
+    // ─────────────────────────────────────────────
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();   // stop the page from scrolling
+        flap();
+      }
+    });
+
+    canvas.addEventListener('click', flap);
+
+    startBtn.addEventListener('click', (e) => {
+      e.stopPropagation();   // don't also trigger a flap when clicking Start
+      initGame();
+    });
+
+    // ─────────────────────────────────────────────
+    //  SPAWN PIPE  – create a new pipe pair
+    // ─────────────────────────────────────────────
+    function spawnPipe() {
+      // gapTop is the Y coordinate where the gap starts.
+      // We leave at least 80px from top and bottom edges.
+      const minTop = 80;
+      const maxTop = canvas.height - GAP_SIZE - 80;
+      const gapTop = Math.random() * (maxTop - minTop) + minTop;
+
+      pipes.push({
+        x: canvas.width,   // start just off the right edge
+        gapTop: gapTop,
+        passed: false       // track whether the bird has passed this pipe
+      });
+    }
+
+    // ─────────────────────────────────────────────
+    //  COLLISION DETECTION
+    //  Returns true if the bird hits a pipe or the ground/ceiling
+    // ─────────────────────────────────────────────
+    function checkCollision(pipe) {
+      const birdLeft   = bird.x - BIRD_SIZE;
+      const birdRight  = bird.x + BIRD_SIZE;
+      const birdTop    = bird.y - BIRD_SIZE;
+      const birdBottom = bird.y + BIRD_SIZE;
+
+      const pipeLeft  = pipe.x;
+      const pipeRight = pipe.x + PIPE_WIDTH;
+
+      // Only check if the bird horizontally overlaps the pipe
+      if (birdRight > pipeLeft && birdLeft < pipeRight) {
+        // Collision with top pipe
+        if (birdTop < pipe.gapTop) return true;
+        // Collision with bottom pipe
+        if (birdBottom > pipe.gapTop + GAP_SIZE) return true;
+      }
+      return false;
+    }
+
+    // ─────────────────────────────────────────────
+    //  GAME OVER  – stop the loop and show overlay
+    // ─────────────────────────────────────────────
+    function gameOver() {
+      gameRunning = false;
+      cancelAnimationFrame(animFrameId);
+
+      overlayTitle.textContent = '💥 Game Over';
+      overlayMsg.textContent   = 'Better luck next time!';
+      overlayScore.textContent = `Score: ${score}`;
+      startBtn.textContent     = '🔄 Play Again';
+      overlay.classList.remove('hidden');
+    }
+
+    // ─────────────────────────────────────────────
+    //  UPDATE  – move everything and check collisions
+    // ─────────────────────────────────────────────
+    function update(timestamp) {
+      // ── Bird physics ──
+      bird.vy += GRAVITY;       // gravity pulls bird down each frame
+      bird.y  += bird.vy;       // move bird by its velocity
+
+      // ── Ceiling check ──
+      if (bird.y - BIRD_SIZE < 0) {
+        bird.y = BIRD_SIZE;
+        bird.vy = 0;
+      }
+
+      // ── Floor check ──
+      if (bird.y + BIRD_SIZE >= canvas.height) {
+        gameOver();
+        return;
+      }
+
+      // ── Spawn new pipes on a timer ──
+      if (timestamp - lastPipeTime > PIPE_INTERVAL) {
+        spawnPipe();
+        lastPipeTime = timestamp;
+      }
+
+      // ── Move pipes and check collisions ──
+      for (let i = pipes.length - 1; i >= 0; i--) {
+        const pipe = pipes[i];
+
+        pipe.x -= PIPE_SPEED;   // move pipe to the left
+
+        // Remove pipe once it's off-screen (to the left)
+        if (pipe.x + PIPE_WIDTH < 0) {
+          pipes.splice(i, 1);
+          continue;
+        }
+
+        // Collision check
+        if (checkCollision(pipe)) {
+          gameOver();
+          return;
+        }
+
+        // Score: bird has passed the pipe's right edge
+        if (!pipe.passed && bird.x > pipe.x + PIPE_WIDTH) {
+          pipe.passed = true;
+          score++;
+        }
+      }
+    }
+
+    // ─────────────────────────────────────────────
+    //  DRAW  – paint the current frame
+    // ─────────────────────────────────────────────
+    function draw() {
+      // ── Background sky gradient ──
+      const skyGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      skyGrad.addColorStop(0, '#87CEEB');   // light blue top
+      skyGrad.addColorStop(1, '#d4f1f4');   // pale cyan bottom
+      ctx.fillStyle = skyGrad;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // ── Ground strip ──
+      ctx.fillStyle = '#8B5E3C';
+      ctx.fillRect(0, canvas.height - 20, canvas.width, 20);
+      ctx.fillStyle = '#5a8a00';
+      ctx.fillRect(0, canvas.height - 24, canvas.width, 8);
+
+      // ── Pipes ──
+      pipes.forEach(pipe => {
+        drawPipe(pipe.x, 0, PIPE_WIDTH, pipe.gapTop, true);              // top pipe
+        drawPipe(pipe.x, pipe.gapTop + GAP_SIZE, PIPE_WIDTH,             // bottom pipe
+                 canvas.height - pipe.gapTop - GAP_SIZE - 20, false);
+      });
+
+      // ── Bird ──
+      drawBird(bird.x, bird.y, bird.vy);
+
+      // ── Score (top-centre) ──
+      ctx.fillStyle = '#1a1a2e';
+      ctx.font      = 'bold 30px Segoe UI';
+      ctx.textAlign = 'center';
+      ctx.fillText(score, canvas.width / 2, 44);
+    }
+
+    // ─────────────────────────────────────────────
+    //  DRAW HELPERS
+    // ─────────────────────────────────────────────
+
+    // Draw one pipe section (top or bottom)
+    function drawPipe(x, y, w, h, isTop) {
+      const capH = 20;   // height of the pipe cap (the wider end)
+      const capW = w + 10;
+
+      // Pipe body gradient (green)
+      const grad = ctx.createLinearGradient(x, 0, x + w, 0);
+      grad.addColorStop(0,   '#2d8a2d');
+      grad.addColorStop(0.4, '#5ab85a');
+      grad.addColorStop(1,   '#1a5c1a');
+
+      ctx.fillStyle = grad;
+      ctx.fillRect(x, y, w, h);
+
+      // Pipe cap (the flared end near the gap)
+      ctx.fillStyle = '#3aac3a';
+      if (isTop) {
+        ctx.fillRect(x - 5, y + h - capH, capW, capH);
+      } else {
+        ctx.fillRect(x - 5, y, capW, capH);
+      }
+
+      // Thin dark outline for depth
+      ctx.strokeStyle = '#1a5c1a';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, w, h);
+    }
+
+    // Draw the bird as a coloured circle with eyes & beak
+    function drawBird(x, y, vy) {
+      // Rotate slightly based on velocity (tilts up/down)
+      const angle = Math.min(Math.max(vy * 0.05, -0.5), 1.2);
+
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+
+      // Body
+      ctx.beginPath();
+      ctx.arc(0, 0, BIRD_SIZE, 0, Math.PI * 2);
+      ctx.fillStyle = '#f5c518';    // yellow bird
+      ctx.fill();
+      ctx.strokeStyle = '#c49a00';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Wing (small arc on the left side)
+      ctx.beginPath();
+      ctx.ellipse(-10, 4, 10, 6, -0.3, 0, Math.PI * 2);
+      ctx.fillStyle = '#e6b800';
+      ctx.fill();
+
+      // Eye white
+      ctx.beginPath();
+      ctx.arc(10, -6, 7, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+
+      // Pupil
+      ctx.beginPath();
+      ctx.arc(12, -6, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#222';
+      ctx.fill();
+
+      // Beak
+      ctx.beginPath();
+      ctx.moveTo(20, -2);
+      ctx.lineTo(30,  2);
+      ctx.lineTo(20,  6);
+      ctx.closePath();
+      ctx.fillStyle = '#ff8800';
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    // ─────────────────────────────────────────────
+    //  MAIN GAME LOOP  – called every animation frame
+    // ─────────────────────────────────────────────
+    function gameLoop(timestamp) {
+      update(timestamp);   // move things, detect collisions
+
+      if (gameRunning) {
+        draw();            // paint the current frame
+        animFrameId = requestAnimationFrame(gameLoop);   // request next frame
+      }
+    }
+
+    // ─────────────────────────────────────────────
+    //  DRAW THE IDLE SCREEN (before first click)
+    // ─────────────────────────────────────────────
+    (function drawIdleScreen() {
+      // Paint background so the canvas isn't blank behind the overlay
+      const skyGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      skyGrad.addColorStop(0, '#87CEEB');
+      skyGrad.addColorStop(1, '#d4f1f4');
+      ctx.fillStyle = skyGrad;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#8B5E3C';
+      ctx.fillRect(0, canvas.height - 20, canvas.width, 20);
+      ctx.fillStyle = '#5a8a00';
+      ctx.fillRect(0, canvas.height - 24, canvas.width, 8);
+      drawBird(80, canvas.height / 2, 0);
+    })();
+  </script>
+</body>
+</html>
