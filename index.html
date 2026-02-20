@@ -278,7 +278,7 @@ let activeSkin = parseInt(localStorage.getItem('fb_skin') || '0');
 let powerupsOn  = localStorage.getItem('fb_powerups') !== 'off';
 
 // Power-up system
-let activePowerUp = null;  // { type, timer }
+let activePowerUp = null;  // { id, emoji, label, color, timer, maxTimer }
 let powerUpQueue  = [];    // spawned items on screen
 const POWERUP_TYPES = [
   { id:'shield',   emoji:'🛡️', color:'#86efac', label:'Shield',    duration:300 },
@@ -682,7 +682,7 @@ function startAmbient() {
       const spd=1+(typeof difficulty==='number'?difficulty*0.5:0);
       masterGain.gain.setTargetAtTime(0.14+0.06*Math.sin(t*spd),ac.currentTime,0.3);
       // Slow-mo effect — dim ambient
-      const slowFactor = (activePowerUp?.type==='slowmo') ? 0.5 : 1;
+      const slowFactor = (activePowerUp?.id==='slowmo') ? 0.5 : 1;
       if (windNode) windGain.gain.setTargetAtTime((0.05+0.05*(typeof difficulty==='number'?difficulty:0))*slowFactor,ac.currentTime,0.8);
     },100);
     ambientNodes={oscs,masterGain,pulse,windOscs};
@@ -806,17 +806,21 @@ const POWERUP_INTERVAL = 12000; // ms between power-up spawns
 
 function maybeSpawnPowerUp(ts) {
   if (!powerupsOn) return;
-  if (score < 3) return; // wait a bit
+  if (score < 3) return;
   if (ts - lastPowerUpSpawn < POWERUP_INTERVAL) return;
   lastPowerUpSpawn = ts;
 
-  const type = POWERUP_TYPES[Math.floor(Math.random()*POWERUP_TYPES.length)];
-  const gapTop = Math.random() * (H * 0.55 - GROUND_H*2) + GROUND_H;
+  const typeObj = POWERUP_TYPES[Math.floor(Math.random()*POWERUP_TYPES.length)];
+  // Keep y safely inside the playfield
+  const minY = GROUND_H + BIRD_R*2;
+  const maxY = H - GROUND_H - BIRD_R*2;
   powerUpQueue.push({
     x: W + 30,
-    y: gapTop + Math.random() * (H * 0.3),
-    type, r: BIRD_R * 0.9,
-    collected: false, alpha: 0
+    y: minY + Math.random() * (maxY - minY),
+    typeObj,               // full object stored here
+    r: BIRD_R * 1.1,       // slightly bigger hitbox so it's catchable
+    collected: false,
+    alpha: 0
   });
 }
 
@@ -826,11 +830,10 @@ function tickPowerUps(ts) {
     activePowerUp.timer--;
     if (activePowerUp.timer <= 0) {
       SFX.powerDown();
-      addPopup(bird.x, bird.y - BIRD_R*3, `${activePowerUp.type.toUpperCase()} ENDED`, '#94a3b8');
+      addPopup(bird.x, bird.y - BIRD_R*3, `${activePowerUp.emoji} ENDED`, '#94a3b8');
       activePowerUp = null;
       powerUpDisplay.style.opacity = '0';
     } else {
-      // Update display
       const frac = activePowerUp.timer / activePowerUp.maxTimer;
       powerUpDisplay.textContent = activePowerUp.emoji + ' ' + Math.ceil(activePowerUp.timer/60) + 's';
       powerUpDisplay.style.opacity = '1';
@@ -838,38 +841,45 @@ function tickPowerUps(ts) {
     }
   }
 
-  // Move power-ups
-  const sp = activePowerUp?.type === 'slowmo' ? pipeSpeed * 0.4 : pipeSpeed;
+  // Move power-ups across screen
+  const sp = activePowerUp?.id === 'slowmo' ? pipeSpeed * 0.4 : pipeSpeed;
   for (let i = powerUpQueue.length-1; i>=0; i--) {
     const pu = powerUpQueue[i];
     pu.x -= sp;
     pu.alpha = Math.min(1, pu.alpha + 0.05);
     if (pu.x + pu.r < 0) { powerUpQueue.splice(i,1); continue; }
 
-    // Collect check
+    // Collection radius — magnet makes it much easier to grab
+    const collectR = pu.r + (activePowerUp?.id === 'magnet' ? BIRD_R*5 : BIRD_R);
     const dx = bird.x - pu.x, dy = bird.y - pu.y;
-    const dist = Math.sqrt(dx*dx+dy*dy);
-    const collectR = pu.r + (activePowerUp?.type==='magnet' ? BIRD_R*5 : BIRD_R*0.9);
+    const dist = Math.sqrt(dx*dx + dy*dy);
     if (!pu.collected && dist < collectR) {
       pu.collected = true;
       powerUpQueue.splice(i,1);
-      collectPowerUp(pu.type);
+      collectPowerUp(pu.typeObj);
     }
   }
 }
 
-function collectPowerUp(type) {
-  activePowerUp = { ...type, timer: type.duration, maxTimer: type.duration, emoji: type.emoji };
+function collectPowerUp(typeObj) {
+  // Store the id string separately so all comparisons work correctly
+  activePowerUp = {
+    id:       typeObj.id,
+    emoji:    typeObj.emoji,
+    label:    typeObj.label,
+    color:    typeObj.color,
+    timer:    typeObj.duration,
+    maxTimer: typeObj.duration,
+  };
   SFX.powerUp();
   triggerShake(4*S);
   vibe([20,10,20]);
-  spawnParticles(bird.x, bird.y, 20, [type.color,'#fff','#FFD166']);
-  spawnRing(bird.x, bird.y, type.color);
-  addPopup(bird.x, bird.y - BIRD_R*2.5, `${type.emoji} ${type.label.toUpperCase()}!`, type.color);
+  spawnParticles(bird.x, bird.y, 20, [typeObj.color,'#fff','#FFD166']);
+  spawnRing(bird.x, bird.y, typeObj.color);
+  addPopup(bird.x, bird.y - BIRD_R*2.5, `${typeObj.emoji} ${typeObj.label.toUpperCase()}!`, typeObj.color);
 
-  // Special effects
-  if (type.id === 'shield') {
-    invincibleTimer = Math.max(invincibleTimer, type.duration);
+  if (typeObj.id === 'shield') {
+    invincibleTimer = Math.max(invincibleTimer, typeObj.duration);
   }
 }
 
@@ -881,14 +891,14 @@ function drawPowerUps() {
     const t = performance.now()/1000;
     const pulse = 0.7 + 0.3*Math.sin(t*3);
     const g = ctx.createRadialGradient(pu.x,pu.y,0,pu.x,pu.y,pu.r*2.5);
-    g.addColorStop(0, pu.type.color+'88');
+    g.addColorStop(0, pu.typeObj.color+'88');
     g.addColorStop(1,'transparent');
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.arc(pu.x,pu.y,pu.r*2.5,0,Math.PI*2); ctx.fill();
 
     // Pill background
     ctx.fillStyle = 'rgba(5,1,20,.82)';
-    ctx.strokeStyle = pu.type.color;
+    ctx.strokeStyle = pu.typeObj.color;
     ctx.lineWidth = 2*S;
     ctx.beginPath(); ctx.arc(pu.x,pu.y,pu.r*pulse,0,Math.PI*2);
     ctx.fill(); ctx.stroke();
@@ -896,7 +906,7 @@ function drawPowerUps() {
     // Emoji
     ctx.font = `${Math.round(pu.r*1.2)}px serif`;
     ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(pu.type.emoji, pu.x, pu.y);
+    ctx.fillText(pu.typeObj.emoji, pu.x, pu.y);
     ctx.textBaseline='alphabetic';
     ctx.restore();
   });
@@ -904,7 +914,7 @@ function drawPowerUps() {
 
 // Effective bird radius considering tiny power-up
 function effectiveBirdR() {
-  return activePowerUp?.type === 'tiny' ? BIRD_R * 0.5 : BIRD_R;
+  return activePowerUp?.id === 'tiny' ? BIRD_R * 0.5 : BIRD_R;
 }
 
 // ─── Game init ───────────────────────────────────────────────────
@@ -987,11 +997,11 @@ function collidesPipe(p) {
   // Magnet: bird auto-steers slightly toward gap center
   const cx = p.x + PIPE_W/2;
   const cy = p.gapTop + p.gap/2;
-  if (activePowerUp?.type==='magnet' && Math.abs(bird.x - cx) < W*0.18) {
+  if (activePowerUp?.id==='magnet' && Math.abs(bird.x - cx) < W*0.18) {
     bird.vy += (cy - bird.y) * 0.018;
   }
   // Shield: no collision
-  if (activePowerUp?.type==='shield') return false;
+  if (activePowerUp?.id==='shield') return false;
   return (bRR>p.x && bL<p.x+PIPE_W) && (bT<p.gapTop || bB>p.gapTop+p.gap);
 }
 
@@ -1014,14 +1024,14 @@ function checkNearMiss(p) {
 // ─── Difficulty ──────────────────────────────────────────────────
 function updateDifficulty() {
   difficulty = Math.min(score/30,1);
-  const slowFactor = activePowerUp?.type==='slowmo' ? 0.42 : 1;
+  const slowFactor = activePowerUp?.id==='slowmo' ? 0.42 : 1;
   pipeSpeed  = (BASE_PIPE_SPEED + difficulty*BASE_PIPE_SPEED*0.75) * slowFactor;
   gapSize    = BASE_GAP - difficulty*BASE_GAP*0.22;
 }
 
 // ─── Damage / death ──────────────────────────────────────────────
 function takeDamage() {
-  if (invincibleTimer>0||activePowerUp?.type==='shield') return;
+  if (invincibleTimer>0||activePowerUp?.id==='shield') return;
   lives--; SFX.hit(); triggerShake(10*S); vibe([40,30,40]);
   updateHearts(); comboCount=0; comboDisplay.style.opacity='0';
   if (lives<=0) { triggerDeath(); }
@@ -1083,7 +1093,7 @@ function update(ts) {
   updateDifficulty();
 
   // Slow-mo effect on gravity too
-  const gravMult = activePowerUp?.type==='slowmo' ? 0.45 : 1;
+  const gravMult = activePowerUp?.id==='slowmo' ? 0.45 : 1;
   bird.vy += GRAVITY * gravMult;
   bird.y  += bird.vy;
 
@@ -1091,7 +1101,7 @@ function update(ts) {
 
   if (bird.y-effectiveBirdR()<0) { bird.y=effectiveBirdR(); bird.vy=Math.abs(bird.vy)*0.3; }
   if (bird.y+effectiveBirdR()>=H-GROUND_H) {
-    if (invincibleTimer>0||activePowerUp?.type==='shield') { bird.y=H-GROUND_H-effectiveBirdR(); bird.vy=BASE_FLAP*0.5; }
+    if (invincibleTimer>0||activePowerUp?.id==='shield') { bird.y=H-GROUND_H-effectiveBirdR(); bird.vy=BASE_FLAP*0.5; }
     else { takeDamage(); if(!gameRunning)return; bird.y=H-GROUND_H-effectiveBirdR()*1.2; bird.vy=BASE_FLAP*0.4; }
   }
 
@@ -1309,7 +1319,7 @@ function drawPipeSection(x,y,w,h,isTop,capH,capE,warn) {
 
 function renderBird(x,y,vy) {
   const sk  = SKINS[activeSkin];
-  const BASE = activePowerUp?.type==='tiny' ? BIRD_R*0.5 : BIRD_R;
+  const BASE = activePowerUp?.id==='tiny' ? BIRD_R*0.5 : BIRD_R;
   const R   = BASE * (sk.size||1);
   const RX  = R * (sk.bodyShape?.rx||1);
   const RY  = R * (sk.bodyShape?.ry||1);
@@ -1320,14 +1330,14 @@ function renderBird(x,y,vy) {
   if (isInv&&Math.floor(invincibleTimer/4)%2===0){ctx.restore();return;}
 
   // Shield ring
-  if (activePowerUp?.type==='shield') {
+  if (activePowerUp?.id==='shield') {
     ctx.save();
     ctx.globalAlpha=0.5+0.3*Math.sin(performance.now()/200);
     ctx.strokeStyle=`rgba(134,239,172,${activePowerUp.timer/activePowerUp.maxTimer})`;
     ctx.lineWidth=2.5; ctx.beginPath(); ctx.arc(0,0,R*1.55,0,Math.PI*2); ctx.stroke();
     ctx.restore();
   }
-  if (activePowerUp?.type==='slowmo') {
+  if (activePowerUp?.id==='slowmo') {
     ctx.save(); ctx.globalAlpha=0.18; ctx.fillStyle='#c4b5fd';
     ctx.beginPath(); ctx.arc(0,0,R*1.6,0,Math.PI*2); ctx.fill(); ctx.restore();
   }
