@@ -457,72 +457,15 @@ pauseOverlay.addEventListener('pointerdown', e => {
 });
 
 // ─── Skin system ─────────────────────────────────────────────────
-// Each skin now has:
-//   body[]     — 5 gradient stops
-//   wing[]     — 3 gradient stops
-//   tail[]     — 4 stroke colors
-//   beakU/L[]  — 2 gradient stops each
-//   belly      — rgba color
-//   bodyShape  — {rx, ry} ellipse scale (1=circle)
-//   eyeStyle   — 'normal'|'big'|'sleepy'|'angry'|'round'|'tiny'
-//   eyeColor   — iris hex
-//   crownColor — optional color for crown/crest drawing
-//   special    — 'none'|'crest'|'mask'|'glasses'|'bow'|'stripes'
-//   size       — body scale multiplier (1 = default)
+// Drawing is handled entirely by individual draw functions (drawClassic, drawParrot etc.)
+// SKINS only needs display info for the UI strip
 const SKINS = [
-  // 0 — Classic yellow canary
-  { emoji:'🐦', label:'Classic', unlockAt:0,
-    body:['#FEF9C3','#FDE047','#EAB308','#CA8A04','#78350F'],
-    belly:'rgba(255,255,245,.75)', wing:['#FCD34D','#D97706','#92400E'],
-    tail:['#EAB308','#CA8A04','#A16207','#854D0E'],
-    beakU:['#FB923C','#EA580C'], beakL:['#F97316','#C2410C'],
-    bodyShape:{rx:1,ry:1}, eyeStyle:'normal', eyeColor:'#451A03',
-    special:'none', size:1 },
-
-  // 1 — Parrot: wider body, big colourful eye, bright crest
-  { emoji:'🦜', label:'Parrot', unlockAt:10,
-    body:['#bbf7d0','#34d399','#059669','#065f46','#022c22'],
-    belly:'rgba(209,250,229,.80)', wing:['#f59e0b','#d97706','#92400E'],
-    tail:['#3b82f6','#6366f1','#a855f7','#ec4899'],
-    beakU:['#fef08a','#eab308'], beakL:['#fde047','#ca8a04'],
-    bodyShape:{rx:1.08,ry:1}, eyeStyle:'big', eyeColor:'#1d4ed8',
-    special:'crest', crownColor:'#f97316', size:1.05 },
-
-  // 2 — Eagle: tall/lean, stern angry brow, dark wing
-  { emoji:'🦅', label:'Eagle', unlockAt:25,
-    body:['#fff7ed','#fed7aa','#9ca3af','#4b5563','#111827'],
-    belly:'rgba(255,255,255,.82)', wing:['#374151','#1f2937','#030712'],
-    tail:['#6b7280','#4b5563','#374151','#1f2937'],
-    beakU:['#fde68a','#d97706'], beakL:['#fcd34d','#b45309'],
-    bodyShape:{rx:0.88,ry:1.10}, eyeStyle:'angry', eyeColor:'#b45309',
-    special:'mask', crownColor:'rgba(255,255,255,.9)', size:1.08 },
-
-  // 3 — Owl: big round body, enormous eyes, ear tufts
-  { emoji:'🦉', label:'Owl', unlockAt:50,
-    body:['#fef3c7','#c7d2fe','#818cf8','#4338ca','#1e1b4b'],
-    belly:'rgba(255,255,255,.85)', wing:['#6366f1','#4338ca','#1e1b4b'],
-    tail:['#a78bfa','#7c3aed','#5b21b6','#3b0764'],
-    beakU:['#fde68a','#ca8a04'], beakL:['#fcd34d','#a16207'],
-    bodyShape:{rx:1.14,ry:1.14}, eyeStyle:'round', eyeColor:'#f59e0b',
-    special:'tufts', crownColor:'#312e81', size:1.12 },
-
-  // 4 — Penguin: short/wide, tiny sleepy eyes, white belly patch, bow tie
-  { emoji:'🐧', label:'Penguin', unlockAt:75,
-    body:['#e2e8f0','#94a3b8','#1e293b','#0f172a','#020617'],
-    belly:'rgba(255,255,255,.95)', wing:['#1e293b','#0f172a','#020617'],
-    tail:['#334155','#1e293b','#0f172a','#020617'],
-    beakU:['#fb923c','#c2410c'], beakL:['#fed7aa','#f97316'],
-    bodyShape:{rx:1.16,ry:1.02}, eyeStyle:'sleepy', eyeColor:'#0f172a',
-    special:'bow', crownColor:'#ef4444', size:1.06 },
-
-  // 5 — Flamingo: tall slim body, long curved beak, pink, head crown
-  { emoji:'🦩', label:'Flamingo', unlockAt:100,
-    body:['#fce7f3','#f9a8d4','#ec4899','#be185d','#831843'],
-    belly:'rgba(255,240,252,.82)', wing:['#f472b6','#db2777','#9d174d'],
-    tail:['#e879f9','#c026d3','#86198f','#581c87'],
-    beakU:['#fde68a','#f59e0b'], beakL:['#fcd34d','#d97706'],
-    bodyShape:{rx:0.82,ry:1.16}, eyeStyle:'tiny', eyeColor:'#be185d',
-    special:'flamingo_beak', crownColor:'#fda4af', size:1.0 },
+  { emoji:'🐦', label:'Classic',  unlockAt:0   },
+  { emoji:'🦜', label:'Parrot',   unlockAt:10  },
+  { emoji:'🦅', label:'Eagle',    unlockAt:25  },
+  { emoji:'🦉', label:'Owl',      unlockAt:50  },
+  { emoji:'🐧', label:'Penguin',  unlockAt:75  },
+  { emoji:'🦩', label:'Flamingo', unlockAt:100 },
 ];
 
 function buildSkinStrip() {
@@ -760,9 +703,11 @@ function drawRings() {
 function spawnTrail(x,y) { trailDots.push({x,y,r:BIRD_R*0.55,life:1}); }
 function tickTrail() { trailDots.forEach(t=>{t.life-=0.07;t.r*=0.92;}); trailDots=trailDots.filter(t=>t.life>0); }
 function drawTrail() {
-  const sk=SKINS[activeSkin];
+  // Trail colour per skin — matches each bird's main body colour
+  const TRAIL_COLORS=['#FDE047','#34d399','#6b7280','#818cf8','#1e293b','#ec4899'];
+  const col = TRAIL_COLORS[activeSkin] || '#FDE047';
   trailDots.forEach(t=>{
-    ctx.save(); ctx.globalAlpha=t.life*0.28; ctx.fillStyle=sk.body[2];
+    ctx.save(); ctx.globalAlpha=t.life*0.28; ctx.fillStyle=col;
     ctx.beginPath(); ctx.arc(t.x,t.y,t.r,0,Math.PI*2); ctx.fill(); ctx.restore();
   });
 }
@@ -1318,247 +1263,563 @@ function drawPipeSection(x,y,w,h,isTop,capH,capE,warn) {
 }
 
 function renderBird(x,y,vy) {
-  const sk  = SKINS[activeSkin];
   const BASE = activePowerUp?.id==='tiny' ? BIRD_R*0.5 : BIRD_R;
-  const R   = BASE * (sk.size||1);
-  const RX  = R * (sk.bodyShape?.rx||1);
-  const RY  = R * (sk.bodyShape?.ry||1);
-  const tilt= Math.min(Math.max(vy*0.055,-0.62),1.55);
-  const isInv=invincibleTimer>0;
+  const R    = BASE;
+  const tilt = Math.min(Math.max(vy*0.055,-0.62),1.55);
+  const isInv= invincibleTimer>0;
+  const T    = performance.now()/1000;
 
   ctx.save(); ctx.translate(x,y); ctx.rotate(tilt);
-  if (isInv&&Math.floor(invincibleTimer/4)%2===0){ctx.restore();return;}
+  if (isInv && Math.floor(invincibleTimer/4)%2===0){ ctx.restore(); return; }
 
-  // Shield ring
+  // ── Power-up overlays ─────────────────────────────────────────
   if (activePowerUp?.id==='shield') {
     ctx.save();
-    ctx.globalAlpha=0.5+0.3*Math.sin(performance.now()/200);
-    ctx.strokeStyle=`rgba(134,239,172,${activePowerUp.timer/activePowerUp.maxTimer})`;
-    ctx.lineWidth=2.5; ctx.beginPath(); ctx.arc(0,0,R*1.55,0,Math.PI*2); ctx.stroke();
+    ctx.globalAlpha = 0.5 + 0.3*Math.sin(T*5);
+    ctx.strokeStyle = `rgba(134,239,172,${activePowerUp.timer/activePowerUp.maxTimer})`;
+    ctx.lineWidth=3; ctx.beginPath(); ctx.arc(0,0,R*1.7,0,Math.PI*2); ctx.stroke();
     ctx.restore();
   }
   if (activePowerUp?.id==='slowmo') {
-    ctx.save(); ctx.globalAlpha=0.18; ctx.fillStyle='#c4b5fd';
-    ctx.beginPath(); ctx.arc(0,0,R*1.6,0,Math.PI*2); ctx.fill(); ctx.restore();
+    ctx.save(); ctx.globalAlpha=0.15; ctx.fillStyle='#c4b5fd';
+    ctx.beginPath(); ctx.arc(0,0,R*1.7,0,Math.PI*2); ctx.fill(); ctx.restore();
   }
 
-  // Halo
-  const hR=isInv?R*3.5:R*2.8;
-  const halo=ctx.createRadialGradient(0,0,R*.5,0,0,hR);
-  halo.addColorStop(0,isInv?'rgba(100,200,255,.45)':'rgba(255,230,80,.22)');
+  // ── Halo ──────────────────────────────────────────────────────
+  const hR = isInv ? R*3.8 : R*2.6;
+  const halo = ctx.createRadialGradient(0,0,R*.4,0,0,hR);
+  halo.addColorStop(0, isInv?'rgba(100,200,255,.4)':'rgba(255,220,60,.18)');
   halo.addColorStop(1,'transparent');
   ctx.fillStyle=halo; ctx.beginPath(); ctx.arc(0,0,hR,0,Math.PI*2); ctx.fill();
 
-  // Drop shadow
-  ctx.save(); ctx.scale(1,.3);
-  ctx.beginPath(); ctx.ellipse(RX*.15,R*3.2,RX*.8,R*.5,0,0,Math.PI*2);
-  ctx.fillStyle='rgba(0,0,0,.18)'; ctx.fill(); ctx.restore();
+  // ── Drop shadow ───────────────────────────────────────────────
+  ctx.save(); ctx.scale(1,.28);
+  ctx.beginPath(); ctx.ellipse(0,R*3.6,R*.9,R*.45,0,0,Math.PI*2);
+  ctx.fillStyle='rgba(0,0,0,.15)'; ctx.fill(); ctx.restore();
 
-  // ── Special: TUFTS (owl ear tufts — drawn before body so body overlaps base) ──
-  if (sk.special==='tufts') {
-    ctx.fillStyle=sk.crownColor;
-    [[-0.45,-0.95],[0.1,-1.0]].forEach(([ox,oy])=>{
-      ctx.beginPath();
-      ctx.moveTo(R*ox-R*0.12, R*oy+R*0.18);
-      ctx.quadraticCurveTo(R*(ox-0.05), R*(oy-0.22), R*(ox+0.12), R*oy);
-      ctx.closePath(); ctx.fill();
-    });
+  // ── Dispatch to per-skin draw functions ───────────────────────
+  switch(activeSkin) {
+    case 0: drawClassic(R,T); break;
+    case 1: drawParrot(R,T);  break;
+    case 2: drawEagle(R,T);   break;
+    case 3: drawOwl(R,T);     break;
+    case 4: drawPenguin(R,T); break;
+    case 5: drawFlamingo(R,T);break;
+    default: drawClassic(R,T);
   }
 
-  // Wing
-  ctx.save(); ctx.rotate(wingAngle);
-  const wg=ctx.createRadialGradient(-R*.3,R*.1,1,-R*.3,R*.3,R*1.15);
-  wg.addColorStop(0,sk.wing[0]); wg.addColorStop(.5,sk.wing[1]); wg.addColorStop(1,sk.wing[2]);
+  ctx.restore();
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 0 · CLASSIC — round yellow canary, simple & clean
+// ─────────────────────────────────────────────────────────────────
+function drawClassic(R,T) {
+  // Wing (flapping ellipse behind body)
+  ctx.save(); ctx.rotate(wingAngle*0.8);
+  const wg=ctx.createLinearGradient(-R*.6,0,R*.1,R);
+  wg.addColorStop(0,'#FCD34D'); wg.addColorStop(1,'#92400E');
   ctx.fillStyle=wg;
-  // Eagle has a broader spread wing, owl has a rounder wing
-  const wRX = sk.special==='tufts' ? R*.7 : R*.58;
-  const wRY = sk.special==='mask'  ? R*.95 : R*1.08;
-  ctx.beginPath(); ctx.ellipse(-RX*.42,R*.25,wRX,wRY,-0.28,0,Math.PI*2); ctx.fill();
-  ctx.strokeStyle='rgba(0,0,0,.18)'; ctx.lineWidth=.9;
-  for(let f=0;f<4;f++){const fr=f/3,fx=-R*.85+fr*R*.65,fy=R*.65+fr*R*.18;ctx.beginPath();ctx.moveTo(fx,fy-R*.52);ctx.quadraticCurveTo(fx+R*.1,fy,fx+R*.16,fy+R*.32);ctx.stroke();}
+  ctx.beginPath(); ctx.ellipse(-R*.38,R*.3,R*.5,R*.85,-0.3,0,Math.PI*2); ctx.fill();
   ctx.restore();
 
-  // Body — ellipse for shape variety
-  const bodyG=ctx.createRadialGradient(-RX*.3,-RY*.3,R*.04,RX*.05,RY*.05,Math.max(RX,RY)*1.1);
-  bodyG.addColorStop(0,sk.body[0]); bodyG.addColorStop(.18,sk.body[1]); bodyG.addColorStop(.45,sk.body[2]); bodyG.addColorStop(.75,sk.body[3]); bodyG.addColorStop(1,sk.body[4]);
-  ctx.fillStyle=bodyG;
-  ctx.beginPath(); ctx.ellipse(0,0,RX,RY,0,0,Math.PI*2); ctx.fill();
+  // Tail — three fan feathers
+  [[-0.18,1.3],[-0.38,1.2],[-0.58,1.05]].forEach(([a,l],i)=>{
+    ctx.save(); ctx.rotate(a);
+    ctx.strokeStyle=['#EAB308','#CA8A04','#A16207'][i];
+    ctx.lineWidth=3.5-i*0.8; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(-R*.55,R*.1); ctx.quadraticCurveTo(-R*l,R*.5,-R*l,R*.0);
+    ctx.stroke(); ctx.restore();
+  });
+
+  // Body — plump circle
+  const bg=ctx.createRadialGradient(-R*.3,-R*.3,R*.05,R*.1,R*.1,R*1.1);
+  bg.addColorStop(0,'#FEF9C3'); bg.addColorStop(0.4,'#FDE047'); bg.addColorStop(1,'#92400E');
+  ctx.fillStyle=bg; ctx.beginPath(); ctx.arc(0,0,R,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,.2)'; ctx.lineWidth=1.2; ctx.stroke();
+
+  // Belly highlight
+  const belly=ctx.createRadialGradient(R*.1,R*.28,0,R*.1,R*.28,R*.48);
+  belly.addColorStop(0,'rgba(255,255,245,.7)'); belly.addColorStop(1,'transparent');
+  ctx.fillStyle=belly; ctx.beginPath(); ctx.ellipse(R*.1,R*.28,R*.42,R*.38,0,0,Math.PI*2); ctx.fill();
+
+  // Eye
+  ctx.beginPath(); ctx.arc(R*.38,-R*.18,R*.34,0,Math.PI*2); ctx.fillStyle='#fff'; ctx.fill();
+  ctx.beginPath(); ctx.arc(R*.41,-R*.2,R*.19,0,Math.PI*2); ctx.fillStyle='#451A03'; ctx.fill();
+  ctx.beginPath(); ctx.arc(R*.44,-R*.23,R*.09,0,Math.PI*2); ctx.fillStyle='#000'; ctx.fill();
+  ctx.beginPath(); ctx.arc(R*.32,-R*.28,R*.08,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fill();
+
+  // Blush
+  const bl=ctx.createRadialGradient(R*.55,R*.08,0,R*.55,R*.08,R*.22);
+  bl.addColorStop(0,'rgba(255,100,80,.35)'); bl.addColorStop(1,'transparent');
+  ctx.fillStyle=bl; ctx.beginPath(); ctx.arc(R*.55,R*.08,R*.22,0,Math.PI*2); ctx.fill();
+
+  // Beak
+  ctx.beginPath(); ctx.moveTo(R*.78,-R*.06);
+  ctx.quadraticCurveTo(R*1.52,-R*.04,R*1.46,R*.08);
+  ctx.quadraticCurveTo(R*1.16,R*.12,R*.78,R*.06); ctx.closePath();
+  ctx.fillStyle='#FB923C'; ctx.fill();
+  ctx.beginPath(); ctx.moveTo(R*.80,R*.08);
+  ctx.quadraticCurveTo(R*1.38,R*.14,R*1.33,R*.24);
+  ctx.quadraticCurveTo(R*1.06,R*.28,R*.80,R*.22); ctx.closePath();
+  ctx.fillStyle='#EA580C'; ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,.2)'; ctx.lineWidth=.8;
+  ctx.beginPath(); ctx.moveTo(R*.80,R*.07); ctx.lineTo(R*1.44,R*.07); ctx.stroke();
+
+  // Sheen
+  const sh=ctx.createRadialGradient(-R*.4,-R*.4,0,-R*.2,-R*.2,R*.65);
+  sh.addColorStop(0,'rgba(255,255,255,.3)'); sh.addColorStop(1,'transparent');
+  ctx.fillStyle=sh; ctx.beginPath(); ctx.arc(0,0,R,0,Math.PI*2); ctx.fill();
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 1 · PARROT — wide body, dramatic crest, hooked beak, colourful
+// ─────────────────────────────────────────────────────────────────
+function drawParrot(R,T) {
+  // Long sweeping tail feathers
+  [['#3b82f6',0.05,1.7],['#a855f7',-0.18,1.55],['#ef4444',-0.38,1.45],['#f59e0b',-0.55,1.3]].forEach(([col,a,l])=>{
+    ctx.save(); ctx.translate(-R*.5,R*.1); ctx.rotate(a);
+    ctx.strokeStyle=col; ctx.lineWidth=3.5; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.quadraticCurveTo(-R*l*0.5,R*l*0.5,-R*l,R*l*0.08);
+    ctx.stroke(); ctx.restore();
+  });
+
+  // Wing — broad, showing blue-green gradient
+  ctx.save(); ctx.rotate(wingAngle*0.9);
+  const wg=ctx.createLinearGradient(-R*.7,0,R*.2,R*.8);
+  wg.addColorStop(0,'#34d399'); wg.addColorStop(0.5,'#059669'); wg.addColorStop(1,'#022c22');
+  ctx.fillStyle=wg;
+  ctx.beginPath(); ctx.ellipse(-R*.42,R*.28,R*.62,R*.98,-0.25,0,Math.PI*2); ctx.fill();
+  // Wing stripe
+  ctx.strokeStyle='rgba(52,211,153,.6)'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(-R*.85,R*.6); ctx.quadraticCurveTo(-R*.5,R*.2,-R*.1,R*.5); ctx.stroke();
+  ctx.restore();
+
+  // Crest — three curved feathers pointing up-back
+  [['#f97316',0,1.6],['#ef4444',-0.22,1.45],['#fde047',0.18,1.38]].forEach(([col,a,len])=>{
+    ctx.save(); ctx.translate(-R*.05,-R*.82); ctx.rotate(a);
+    ctx.strokeStyle=col; ctx.lineWidth=3; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.quadraticCurveTo(-R*.2,-R*len*0.55,-R*.05,-R*len);
+    ctx.stroke();
+    // Crest tip dot
+    ctx.fillStyle=col; ctx.beginPath(); ctx.arc(-R*.05,-R*len,R*.08,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  });
+
+  // Body — wide oval, vivid green
+  const bg=ctx.createRadialGradient(-R*.32,-R*.28,R*.04,R*.08,R*.08,R*1.18);
+  bg.addColorStop(0,'#bbf7d0'); bg.addColorStop(0.35,'#34d399'); bg.addColorStop(0.7,'#059669'); bg.addColorStop(1,'#022c22');
+  ctx.fillStyle=bg;
+  ctx.beginPath(); ctx.ellipse(0,0,R*1.06,R,0,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,.2)'; ctx.lineWidth=1.2; ctx.stroke();
+
+  // Cheek patches — yellow circles
+  ctx.fillStyle='#fef08a';
+  ctx.beginPath(); ctx.ellipse(R*.38,-R*.05,R*.22,R*.18,0,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,.1)'; ctx.lineWidth=.8; ctx.stroke();
+
+  // Eye — big yellow-ringed
+  ctx.beginPath(); ctx.arc(R*.35,-R*.22,R*.30,0,Math.PI*2); ctx.fillStyle='#fff'; ctx.fill();
+  // Yellow eye-ring
+  ctx.strokeStyle='#fbbf24'; ctx.lineWidth=2.2;
+  ctx.beginPath(); ctx.arc(R*.35,-R*.22,R*.32,0,Math.PI*2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(R*.37,-R*.24,R*.18,0,Math.PI*2); ctx.fillStyle='#1d4ed8'; ctx.fill();
+  ctx.beginPath(); ctx.arc(R*.39,-R*.26,R*.09,0,Math.PI*2); ctx.fillStyle='#000'; ctx.fill();
+  ctx.beginPath(); ctx.arc(R*.28,-R*.30,R*.07,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fill();
+
+  // Hooked beak — upper mandible curves down at tip
+  ctx.beginPath();
+  ctx.moveTo(R*.72,-R*.08);
+  ctx.bezierCurveTo(R*1.4,-R*.1,R*1.55,R*.04,R*1.42,R*.22);
+  ctx.bezierCurveTo(R*1.3,R*.35,R*1.1,R*.22,R*.72,R*.06);
+  ctx.closePath();
+  ctx.fillStyle='#fde047'; ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,.2)'; ctx.lineWidth=.9; ctx.stroke();
+  // Lower
+  ctx.beginPath(); ctx.moveTo(R*.74,R*.08);
+  ctx.quadraticCurveTo(R*1.18,R*.18,R*1.1,R*.30);
+  ctx.quadraticCurveTo(R*.92,R*.36,R*.74,R*.24); ctx.closePath();
+  ctx.fillStyle='#ca8a04'; ctx.fill();
+
+  // Sheen
+  const sh=ctx.createRadialGradient(-R*.38,-R*.38,0,-R*.2,-R*.2,R*.72);
+  sh.addColorStop(0,'rgba(255,255,255,.28)'); sh.addColorStop(1,'transparent');
+  ctx.fillStyle=sh; ctx.beginPath(); ctx.ellipse(0,0,R*1.06,R,0,0,Math.PI*2); ctx.fill();
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 2 · EAGLE — tall narrow body, white head, fierce brow, spread wings
+// ─────────────────────────────────────────────────────────────────
+function drawEagle(R,T) {
+  // Spread wing (large, flat, angular)
+  ctx.save(); ctx.rotate(wingAngle*0.6);
+  ctx.beginPath();
+  ctx.moveTo(-R*.2,R*.1);
+  ctx.bezierCurveTo(-R*.6,-R*.1,-R*1.3,-R*.05,-R*1.45,R*.28);
+  ctx.bezierCurveTo(-R*1.3,R*.55,-R*.8,R*.7,-R*.2,R*.45);
+  ctx.closePath();
+  const wg=ctx.createLinearGradient(-R*1.4,0,0,R*.5);
+  wg.addColorStop(0,'#1f2937'); wg.addColorStop(0.5,'#374151'); wg.addColorStop(1,'#4b5563');
+  ctx.fillStyle=wg; ctx.fill();
+  // Primary feather tips — white tipped
+  for(let i=0;i<5;i++){
+    const fx=-R*(1.0+i*0.07), fy=R*(0.22+i*0.04);
+    ctx.fillStyle='rgba(255,255,255,.25)';
+    ctx.beginPath(); ctx.ellipse(fx,fy,R*.07,R*.2,0.2+i*0.08,0,Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+
+  // Tail — wedge shaped
+  ctx.beginPath();
+  ctx.moveTo(-R*.5,R*.1);
+  ctx.bezierCurveTo(-R*1.1,R*.2,-R*1.4,R*.5,-R*1.3,R*.7);
+  ctx.bezierCurveTo(-R*1.0,R*.85,-R*.6,R*.6,-R*.5,R*.35);
+  ctx.closePath();
+  ctx.fillStyle='#374151'; ctx.fill();
+  // Tail feather lines
+  for(let i=0;i<4;i++){
+    ctx.strokeStyle='rgba(100,116,139,.6)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(-R*.55,R*.22+i*R*.04); ctx.lineTo(-R*1.25,R*.55+i*R*.05); ctx.stroke();
+  }
+
+  // Body — taller narrow teardrop
+  const bg=ctx.createRadialGradient(-R*.2,-R*.4,R*.04,0,0,R*1.05);
+  bg.addColorStop(0,'#6b7280'); bg.addColorStop(0.5,'#4b5563'); bg.addColorStop(1,'#1f2937');
+  ctx.fillStyle=bg;
+  ctx.beginPath(); ctx.ellipse(0,0,R*.88,R*1.08,0,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,.3)'; ctx.lineWidth=1.2; ctx.stroke();
+
+  // White head cap — covers top 55% of body
+  ctx.beginPath();
+  ctx.ellipse(R*.02,-R*.28,R*.72,R*.7,0,0,Math.PI*2);
+  ctx.fillStyle='#f1f5f9'; ctx.fill();
+
+  // Chest streaks — dark brown vertical streaks
+  ctx.strokeStyle='rgba(55,65,81,.5)'; ctx.lineWidth=1.5; ctx.lineCap='round';
+  [[-R*.12,R*.1],[-R*.02,R*.08],[R*.1,R*.12],[-R*.2,R*.18]].forEach(([sx,sy])=>{
+    ctx.beginPath(); ctx.moveTo(sx,sy); ctx.lineTo(sx+R*.04,sy+R*.28); ctx.stroke();
+  });
+
+  // Fierce eye with heavy brow
+  ctx.beginPath(); ctx.arc(R*.32,-R*.28,R*.30,0,Math.PI*2); ctx.fillStyle='#fff'; ctx.fill();
+  ctx.beginPath(); ctx.arc(R*.34,-R*.28,R*.18,0,Math.PI*2); ctx.fillStyle='#92400e'; ctx.fill();
+  ctx.beginPath(); ctx.arc(R*.36,-R*.30,R*.09,0,Math.PI*2); ctx.fillStyle='#000'; ctx.fill();
+  ctx.beginPath(); ctx.arc(R*.26,-R*.34,R*.07,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fill();
+  // Heavy brow ridge — drawn as dark filled arc
+  ctx.fillStyle='#374151';
+  ctx.beginPath();
+  ctx.moveTo(R*.05,-R*.44);
+  ctx.bezierCurveTo(R*.15,-R*.58,R*.48,-R*.52,R*.58,-R*.40);
+  ctx.bezierCurveTo(R*.56,-R*.35,R*.48,-R*.42,R*.14,-R*.40);
+  ctx.closePath(); ctx.fill();
+
+  // Yellow hooked beak
+  ctx.beginPath();
+  ctx.moveTo(R*.68,-R*.18);
+  ctx.bezierCurveTo(R*1.42,-R*.22,R*1.58,-R*.04,R*1.42,R*.16);
+  ctx.bezierCurveTo(R*1.28,R*.32,R*1.08,R*.16,R*.68,R*.02);
+  ctx.closePath();
+  const bkG=ctx.createLinearGradient(R*.68,-R*.18,R*1.42,R*.16);
+  bkG.addColorStop(0,'#fef08a'); bkG.addColorStop(1,'#b45309');
+  ctx.fillStyle=bkG; ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,.25)'; ctx.lineWidth=.9; ctx.stroke();
+  // Cere (fleshy bit at beak base)
+  ctx.fillStyle='#fcd34d';
+  ctx.beginPath(); ctx.ellipse(R*.82,-R*.18,R*.12,R*.08,-.3,0,Math.PI*2); ctx.fill();
+
+  // Sheen
+  const sh=ctx.createRadialGradient(-R*.35,-R*.42,0,-R*.18,-R*.22,R*.68);
+  sh.addColorStop(0,'rgba(255,255,255,.22)'); sh.addColorStop(1,'transparent');
+  ctx.fillStyle=sh; ctx.beginPath(); ctx.ellipse(0,0,R*.88,R*1.08,0,0,Math.PI*2); ctx.fill();
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 3 · OWL — large round head, flat facial disc, ear tufts, huge eyes
+// ─────────────────────────────────────────────────────────────────
+function drawOwl(R,T) {
+  // Stubby rounded tail
+  ctx.beginPath();
+  ctx.moveTo(-R*.55,R*.2);
+  ctx.quadraticCurveTo(-R*1.1,R*.55,-R*.95,R*.8);
+  ctx.quadraticCurveTo(-R*.65,R*.95,-R*.45,R*.55);
+  ctx.closePath(); ctx.fillStyle='#4338ca'; ctx.fill();
+  // Tail bars
+  ctx.strokeStyle='rgba(99,102,241,.5)'; ctx.lineWidth=1.5;
+  for(let i=0;i<3;i++){
+    ctx.beginPath(); ctx.moveTo(-R*(.55+i*.12),R*(.3+i*.08)); ctx.lineTo(-R*(.9+i*.04),R*(.65+i*.08)); ctx.stroke();
+  }
+
+  // Wing — rounded, tucked close
+  ctx.save(); ctx.rotate(wingAngle*0.7);
+  const wg=ctx.createLinearGradient(-R*.5,0,R*.1,R*.7);
+  wg.addColorStop(0,'#818cf8'); wg.addColorStop(0.5,'#4338ca'); wg.addColorStop(1,'#1e1b4b');
+  ctx.fillStyle=wg;
+  ctx.beginPath(); ctx.ellipse(-R*.35,R*.32,R*.52,R*.88,-0.18,0,Math.PI*2); ctx.fill();
+  // Feather texture lines on wing
+  ctx.strokeStyle='rgba(129,140,248,.4)'; ctx.lineWidth=1.2;
+  for(let i=0;i<3;i++){
+    ctx.beginPath(); ctx.moveTo(-R*(.6+i*.08),R*(.5-i*.1)); ctx.quadraticCurveTo(-R*(.3+i*.08),R*(.3-i*.08),-R*(.05+i*.04),R*(.55-i*.08)); ctx.stroke();
+  }
+  ctx.restore();
+
+  // BODY — very round, chunky
+  const bg=ctx.createRadialGradient(-R*.25,-R*.25,R*.04,R*.08,R*.12,R*1.15);
+  bg.addColorStop(0,'#fef3c7'); bg.addColorStop(0.25,'#c7d2fe'); bg.addColorStop(0.6,'#6366f1'); bg.addColorStop(1,'#1e1b4b');
+  ctx.fillStyle=bg;
+  ctx.beginPath(); ctx.arc(0,0,R*1.08,0,Math.PI*2); ctx.fill();
   ctx.strokeStyle='rgba(0,0,0,.22)'; ctx.lineWidth=1.3; ctx.stroke();
 
-  // Belly patch — penguin has big white oval, others smaller
-  const bellyRX = sk.special==='bow' ? RX*.55 : RX*.48;
-  const bellyRY = sk.special==='bow' ? RY*.58 : RY*.42;
-  const belly=ctx.createRadialGradient(RX*.08,RY*.28,0,RX*.08,RY*.30,Math.max(bellyRX,bellyRY));
-  belly.addColorStop(0,sk.belly); belly.addColorStop(1,'transparent');
-  ctx.fillStyle=belly; ctx.beginPath(); ctx.ellipse(RX*.08,RY*.3,bellyRX,bellyRY,0,0,Math.PI*2); ctx.fill();
+  // Breast/belly — cream horizontal barring
+  ctx.fillStyle='rgba(254,243,199,.75)';
+  ctx.beginPath(); ctx.ellipse(R*.04,R*.22,R*.52,R*.58,0,0,Math.PI*2); ctx.fill();
+  // Barring lines across belly
+  ctx.strokeStyle='rgba(99,102,241,.25)'; ctx.lineWidth=1.5;
+  for(let i=0;i<5;i++){
+    ctx.beginPath(); ctx.moveTo(-R*.4,R*(-0.04+i*.16)); ctx.quadraticCurveTo(R*.04,R*(-0.06+i*.16),R*.42,R*(-0.04+i*.16)); ctx.stroke();
+  }
 
-  // ── Special features ──────────────────────────────────────────
-
-  // CREST (parrot)
-  if (sk.special==='crest') {
-    ctx.fillStyle=sk.crownColor;
+  // EAR TUFTS — before the face
+  [[-R*.32,-R*.94],[R*.06,-R*.98]].forEach(([ex,ey],si)=>{
+    ctx.fillStyle='#312e81';
     ctx.beginPath();
-    ctx.moveTo(-R*.1,-RY*.85);
-    ctx.quadraticCurveTo(-R*.35,-RY*1.55,-R*.05,-RY*1.7);
-    ctx.quadraticCurveTo(R*.1,-RY*1.55,R*.05,-RY*0.9);
+    ctx.moveTo(ex-R*.1,ey+R*.2);
+    ctx.bezierCurveTo(ex-R*.18,ey-R*.05,ex-R*.05,ey-R*.45,ex,ey-R*.52);
+    ctx.bezierCurveTo(ex+R*.05,ey-R*.45,ex+R*.18,ey-R*.05,ex+R*.1,ey+R*.2);
     ctx.closePath(); ctx.fill();
-    ctx.fillStyle='#fde68a';
-    ctx.beginPath(); ctx.ellipse(-R*.04,-RY*1.52,R*.06,R*.10,0.2,0,Math.PI*2); ctx.fill();
-  }
-
-  // MASK (eagle — white head cap)
-  if (sk.special==='mask') {
-    ctx.save();
-    ctx.fillStyle=sk.crownColor;
+    // Lighter inner tuft
+    ctx.fillStyle='#4338ca';
     ctx.beginPath();
-    ctx.ellipse(-RX*.05,-RY*.38,RX*.72,RY*.52,0,0,Math.PI*2);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  // BOW TIE (penguin)
-  if (sk.special==='bow') {
-    const bx=RX*.08, by=RY*.55;
-    ctx.fillStyle=sk.crownColor;
-    ctx.beginPath();
-    ctx.moveTo(bx,by); ctx.bezierCurveTo(bx-R*.22,by-R*.08,bx-R*.28,by+R*.06,bx,by+R*.02);
-    ctx.bezierCurveTo(bx+R*.28,by+R*.06,bx+R*.22,by-R*.08,bx,by);
-    ctx.fill();
-    ctx.beginPath(); ctx.arc(bx,by+R*.01,R*.04,0,Math.PI*2);
-    ctx.fillStyle='#7f1d1d'; ctx.fill();
-  }
-
-  // ── Eyes ─────────────────────────────────────────────────────
-  const ex=RX*.40, ey=-RY*.20;
-
-  if (sk.eyeStyle==='round') {
-    // OWL — two giant round eyes
-    [[-RX*.22,-RY*.15],[RX*.38,-RY*.18]].forEach(([oex,oey],i)=>{
-      const er=R*(i===0?.30:.34);
-      // Outer ring
-      ctx.beginPath(); ctx.arc(oex,oey,er*1.15,0,Math.PI*2);
-      ctx.fillStyle='rgba(0,0,0,.35)'; ctx.fill();
-      ctx.beginPath(); ctx.arc(oex,oey,er,0,Math.PI*2); ctx.fillStyle='#fff'; ctx.fill();
-      // Iris
-      ctx.beginPath(); ctx.arc(oex+R*.02,oey,er*.62,0,Math.PI*2);
-      ctx.fillStyle=sk.eyeColor; ctx.fill();
-      // Pupil
-      ctx.beginPath(); ctx.arc(oex+R*.04,oey,er*.32,0,Math.PI*2); ctx.fillStyle='#000'; ctx.fill();
-      // Catch light
-      ctx.beginPath(); ctx.arc(oex-R*.02,oey-er*.28,er*.14,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fill();
-    });
-  } else if (sk.eyeStyle==='big') {
-    // PARROT — one big expressive eye
-    ctx.beginPath(); ctx.arc(ex,ey,R*.42,0,Math.PI*2); ctx.fillStyle='#fff'; ctx.fill();
-    ctx.strokeStyle='rgba(0,0,0,.15)'; ctx.lineWidth=.9; ctx.stroke();
-    ctx.beginPath(); ctx.arc(ex+R*.03,ey,R*.26,0,Math.PI*2); ctx.fillStyle=sk.eyeColor; ctx.fill();
-    ctx.beginPath(); ctx.arc(ex+R*.05,ey,R*.13,0,Math.PI*2); ctx.fillStyle='#000'; ctx.fill();
-    ctx.beginPath(); ctx.arc(ex-R*.04,ey-R*.14,R*.08,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fill();
-    // Yellow ring around eye
-    ctx.strokeStyle='#fde68a'; ctx.lineWidth=1.6;
-    ctx.beginPath(); ctx.arc(ex,ey,R*.44,0,Math.PI*2); ctx.stroke();
-  } else if (sk.eyeStyle==='angry') {
-    // EAGLE — eye with angry brow
-    ctx.beginPath(); ctx.arc(ex,ey,R*.36,0,Math.PI*2); ctx.fillStyle='#fff'; ctx.fill();
-    ctx.beginPath(); ctx.arc(ex+R*.02,ey,R*.20,0,Math.PI*2); ctx.fillStyle=sk.eyeColor; ctx.fill();
-    ctx.beginPath(); ctx.arc(ex+R*.04,ey,R*.10,0,Math.PI*2); ctx.fillStyle='#000'; ctx.fill();
-    ctx.beginPath(); ctx.arc(ex-R*.04,ey-R*.12,R*.07,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fill();
-    // Stern brow slash
-    ctx.strokeStyle='#1f2937'; ctx.lineWidth=2.5; ctx.lineCap='round';
-    ctx.beginPath(); ctx.moveTo(ex-R*.26,ey-R*.32); ctx.lineTo(ex+R*.22,ey-R*.22); ctx.stroke();
-  } else if (sk.eyeStyle==='sleepy') {
-    // PENGUIN — tiny sleepy half-closed eyes
-    ctx.beginPath(); ctx.arc(ex,ey,R*.28,0,Math.PI*2); ctx.fillStyle='#fff'; ctx.fill();
-    ctx.beginPath(); ctx.arc(ex,ey,R*.14,0,Math.PI*2); ctx.fillStyle=sk.eyeColor; ctx.fill();
-    ctx.beginPath(); ctx.arc(ex+R*.02,ey,R*.07,0,Math.PI*2); ctx.fillStyle='#000'; ctx.fill();
-    // Heavy eyelid drawn over top half
-    ctx.save(); ctx.beginPath();
-    ctx.arc(ex,ey,R*.30,Math.PI,0); ctx.fillStyle='rgba(30,41,59,.75)'; ctx.fill(); ctx.restore();
-    ctx.beginPath(); ctx.arc(ex-R*.06,ey-R*.10,R*.06,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.85)'; ctx.fill();
-  } else if (sk.eyeStyle==='tiny') {
-    // FLAMINGO — dainty tiny eye with lash
-    ctx.beginPath(); ctx.arc(ex,ey,R*.28,0,Math.PI*2); ctx.fillStyle='#fff'; ctx.fill();
-    ctx.beginPath(); ctx.arc(ex+R*.02,ey,R*.15,0,Math.PI*2); ctx.fillStyle=sk.eyeColor; ctx.fill();
-    ctx.beginPath(); ctx.arc(ex+R*.04,ey,R*.07,0,Math.PI*2); ctx.fillStyle='#000'; ctx.fill();
-    ctx.beginPath(); ctx.arc(ex-R*.04,ey-R*.1,R*.05,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fill();
-    // Eyelash curve
-    ctx.strokeStyle='#831843'; ctx.lineWidth=1.4; ctx.lineCap='round';
-    ctx.beginPath(); ctx.moveTo(ex-R*.2,ey-R*.22); ctx.quadraticCurveTo(ex,ey-R*.38,ex+R*.2,ey-R*.26); ctx.stroke();
-  } else {
-    // NORMAL (classic)
-    ctx.beginPath(); ctx.arc(ex,ey,R*.38,0,Math.PI*2); ctx.fillStyle='#fff'; ctx.fill();
-    ctx.strokeStyle='rgba(0,0,0,.1)'; ctx.lineWidth=.8; ctx.stroke();
-    const iG=ctx.createRadialGradient(ex+R*.02,ey-R*.02,0,ex+R*.04,ey,R*.22);
-    iG.addColorStop(0,'#78350F'); iG.addColorStop(.6,sk.eyeColor||'#451A03'); iG.addColorStop(1,'#1C0701');
-    ctx.fillStyle=iG; ctx.beginPath(); ctx.arc(ex+R*.04,ey,R*.22,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle='#000'; ctx.beginPath(); ctx.arc(ex+R*.06,ey-R*.04,R*.10,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle='rgba(255,255,255,.95)';
-    ctx.beginPath(); ctx.arc(ex-R*.04,ey-R*.14,R*.09,0,Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(ex+R*.12,ey-R*.04,R*.05,0,Math.PI*2); ctx.fill();
-  }
-
-  // Blush (skip on eagle/penguin for character)
-  if (sk.special!=='mask' && sk.special!=='bow') {
-    const blush=ctx.createRadialGradient(RX*.5,RY*.12,0,RX*.5,RY*.12,R*.24);
-    blush.addColorStop(0,'rgba(255,100,100,.32)'); blush.addColorStop(1,'transparent');
-    ctx.fillStyle=blush; ctx.beginPath(); ctx.arc(RX*.5,RY*.12,R*.24,0,Math.PI*2); ctx.fill();
-  }
-
-  // ── Beak ─────────────────────────────────────────────────────
-  if (sk.special==='flamingo_beak') {
-    // Long downward-curved flamingo beak
-    ctx.beginPath();
-    ctx.moveTo(RX*.75,-RY*.05);
-    ctx.quadraticCurveTo(RX*1.55,RY*.12,RX*1.4,RY*.38);
-    ctx.quadraticCurveTo(RX*1.1,RY*.42,RX*.78,RY*.10);
-    ctx.closePath();
-    const fbG=ctx.createLinearGradient(RX*.75,0,RX*1.5,RY*.38);
-    fbG.addColorStop(0,sk.beakU[0]); fbG.addColorStop(1,sk.beakU[1]);
-    ctx.fillStyle=fbG; ctx.fill();
-    // Pink knee bend
-    ctx.fillStyle='rgba(190,24,93,.5)';
-    ctx.beginPath(); ctx.ellipse(RX*1.36,RY*.25,R*.07,R*.07,0,0,Math.PI*2); ctx.fill();
-  } else {
-    // Standard beak (upper)
-    ctx.beginPath();
-    ctx.moveTo(RX*.80,-RY*.08); ctx.quadraticCurveTo(RX*1.60,-RY*.05,RX*1.54,RY*.09);
-    ctx.quadraticCurveTo(RX*1.18,RY*.13,RX*.80,RY*.08); ctx.closePath();
-    const ubG=ctx.createLinearGradient(RX*.80,-RY*.08,RX*1.54,RY*.09);
-    ubG.addColorStop(0,sk.beakU[0]); ubG.addColorStop(1,sk.beakU[1]);
-    ctx.fillStyle=ubG; ctx.fill();
-    // Lower beak
-    ctx.beginPath();
-    ctx.moveTo(RX*.82,RY*.10); ctx.quadraticCurveTo(RX*1.44,RY*.15,RX*1.39,RY*.28);
-    ctx.quadraticCurveTo(RX*1.08,RY*.32,RX*.82,RY*.25); ctx.closePath();
-    const lbG=ctx.createLinearGradient(RX*.82,RY*.10,RX*1.39,RY*.28);
-    lbG.addColorStop(0,sk.beakL[0]); lbG.addColorStop(1,sk.beakL[1]);
-    ctx.fillStyle=lbG; ctx.fill();
-    // Beak seam line
-    ctx.strokeStyle='rgba(0,0,0,.22)'; ctx.lineWidth=.9;
-    ctx.beginPath(); ctx.moveTo(RX*.82,RY*.09); ctx.lineTo(RX*1.52,RY*.09); ctx.stroke();
-    // Nostril
-    ctx.fillStyle='rgba(0,0,0,.25)';
-    ctx.beginPath(); ctx.ellipse(RX*1.10,-RY*.008,R*.044,R*.060,0.3,0,Math.PI*2); ctx.fill();
-  }
-
-  // ── Tail feathers ────────────────────────────────────────────
-  ctx.save(); ctx.translate(-RX*.88,RY*.08); ctx.rotate(0.22);
-  const tailConf = sk.special==='flamingo_beak'
-    ? [{w:2.8,a:-0.12,l:1.4},{w:2.2,a:0.12,l:1.6},{w:1.8,a:0.36,l:1.3},{w:1.3,a:0.58,l:1.05}]
-    : [{w:3.6,a:-0.28,l:1.22},{w:2.6,a:0,l:1.38},{w:2.1,a:0.30,l:1.18},{w:1.6,a:0.52,l:0.98}];
-  tailConf.forEach((t,i)=>{
-    ctx.save(); ctx.rotate(t.a);
-    ctx.beginPath(); ctx.moveTo(0,0); ctx.quadraticCurveTo(-R*t.l*.72,R*t.l*.36,-R*t.l,R*t.l*.13);
-    ctx.strokeStyle=sk.tail[i]; ctx.lineWidth=t.w; ctx.lineCap='round'; ctx.stroke(); ctx.restore();
+    ctx.moveTo(ex-R*.04,ey+R*.15);
+    ctx.bezierCurveTo(ex-R*.06,ey-R*.02,ex-R*.01,ey-R*.35,ex+R*.02,ey-R*.4);
+    ctx.bezierCurveTo(ex+R*.05,ey-R*.35,ex+R*.06,ey-R*.02,ex+R*.04,ey+R*.15);
+    ctx.closePath(); ctx.fill();
   });
+
+  // FACIAL DISC — the flat circular face of an owl
+  const disc=ctx.createRadialGradient(0,-R*.18,0,0,-R*.18,R*.78);
+  disc.addColorStop(0,'rgba(254,243,199,.9)'); disc.addColorStop(0.7,'rgba(199,210,254,.5)'); disc.addColorStop(1,'transparent');
+  ctx.fillStyle=disc;
+  ctx.beginPath(); ctx.ellipse(0,-R*.18,R*.72,R*.68,0,0,Math.PI*2); ctx.fill();
+  // Disc border rings
+  ctx.strokeStyle='rgba(67,56,202,.3)'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.ellipse(0,-R*.18,R*.73,R*.69,0,0,Math.PI*2); ctx.stroke();
+  ctx.strokeStyle='rgba(67,56,202,.15)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.ellipse(0,-R*.18,R*.65,R*.61,0,0,Math.PI*2); ctx.stroke();
+
+  // TWO HUGE EYES — the owl's signature feature
+  [[-R*.28,-R*.24],[R*.28,-R*.24]].forEach(([oex,oey])=>{
+    // Outer dark ring
+    ctx.beginPath(); ctx.arc(oex,oey,R*.30,0,Math.PI*2);
+    ctx.fillStyle='#1e1b4b'; ctx.fill();
+    // White sclera
+    ctx.beginPath(); ctx.arc(oex,oey,R*.26,0,Math.PI*2); ctx.fillStyle='#fffbeb'; ctx.fill();
+    // Golden iris with radial pattern
+    const iris=ctx.createRadialGradient(oex,oey,0,oex,oey,R*.20);
+    iris.addColorStop(0,'#fef08a'); iris.addColorStop(0.4,'#f59e0b'); iris.addColorStop(0.8,'#d97706'); iris.addColorStop(1,'#92400e');
+    ctx.fillStyle=iris; ctx.beginPath(); ctx.arc(oex,oey,R*.20,0,Math.PI*2); ctx.fill();
+    // Pupil — vertical slit like a real owl
+    ctx.fillStyle='#000';
+    ctx.beginPath(); ctx.ellipse(oex,oey,R*.07,R*.14,0,0,Math.PI*2); ctx.fill();
+    // Two catch lights
+    ctx.fillStyle='rgba(255,255,255,.92)';
+    ctx.beginPath(); ctx.arc(oex-R*.06,oey-R*.08,R*.055,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(oex+R*.08,oey+R*.04,R*.03,0,Math.PI*2); ctx.fill();
+  });
+
+  // Small hooked beak centered between eyes
+  ctx.beginPath();
+  ctx.moveTo(-R*.08,R*.02);
+  ctx.bezierCurveTo(-R*.06,-R*.08,R*.06,-R*.08,R*.08,R*.02);
+  ctx.bezierCurveTo(R*.1,R*.14,R*.02,R*.22,-R*.02,R*.22);
+  ctx.bezierCurveTo(-R*.06,R*.22,-R*.1,R*.14,-R*.08,R*.02);
+  ctx.closePath();
+  ctx.fillStyle='#fbbf24'; ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,.2)'; ctx.lineWidth=.8; ctx.stroke();
+
+  // Sheen
+  const sh=ctx.createRadialGradient(-R*.42,-R*.48,0,-R*.22,-R*.28,R*.72);
+  sh.addColorStop(0,'rgba(255,255,255,.28)'); sh.addColorStop(1,'transparent');
+  ctx.fillStyle=sh; ctx.beginPath(); ctx.arc(0,0,R*1.08,0,Math.PI*2); ctx.fill();
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 4 · PENGUIN — upright egg shape, tuxedo, flipper wings, bow tie
+// ─────────────────────────────────────────────────────────────────
+function drawPenguin(R,T) {
+  // Flipper — flat, black, swept back
+  ctx.save(); ctx.rotate(-wingAngle*0.5+0.3);
+  ctx.beginPath();
+  ctx.moveTo(-R*.15,R*.02);
+  ctx.bezierCurveTo(-R*.5,-R*.28,-R*1.22,-R*.18,-R*1.28,R*.18);
+  ctx.bezierCurveTo(-R*1.22,R*.48,-R*.5,R*.55,-R*.15,R*.42);
+  ctx.closePath();
+  ctx.fillStyle='#0f172a'; ctx.fill();
+  ctx.strokeStyle='rgba(100,116,139,.3)'; ctx.lineWidth=.8; ctx.stroke();
   ctx.restore();
 
-  // Specular sheen
-  const sheen=ctx.createRadialGradient(-RX*.42,-RY*.42,0,-RX*.22,-RY*.22,R*.68);
-  sheen.addColorStop(0,'rgba(255,255,255,.26)'); sheen.addColorStop(.5,'rgba(255,255,255,.06)'); sheen.addColorStop(1,'transparent');
-  ctx.fillStyle=sheen; ctx.beginPath(); ctx.ellipse(0,0,RX,RY,0,0,Math.PI*2); ctx.fill();
+  // Tail — short stubby wedge
+  ctx.beginPath();
+  ctx.moveTo(-R*.38,R*.55);
+  ctx.quadraticCurveTo(-R*.7,R*.9,-R*.55,R*1.05);
+  ctx.quadraticCurveTo(-R*.3,R*1.1,-R*.2,R*.72);
+  ctx.closePath(); ctx.fillStyle='#0f172a'; ctx.fill();
 
+  // BODY — tall egg, wider at bottom (tuxedo back)
+  const bgBack=ctx.createRadialGradient(-R*.2,-R*.1,R*.05,0,0,R*1.08);
+  bgBack.addColorStop(0,'#1e293b'); bgBack.addColorStop(0.5,'#0f172a'); bgBack.addColorStop(1,'#020617');
+  ctx.fillStyle=bgBack;
+  ctx.beginPath(); ctx.ellipse(0,0,R*.96,R*1.06,0,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,.3)'; ctx.lineWidth=1.2; ctx.stroke();
+
+  // TUXEDO BELLY — white front patch
+  const belly=ctx.createRadialGradient(R*.06,R*.18,0,R*.06,R*.18,R*.7);
+  belly.addColorStop(0,'#f8fafc'); belly.addColorStop(0.6,'#e2e8f0'); belly.addColorStop(1,'transparent');
+  ctx.fillStyle=belly;
+  ctx.beginPath(); ctx.ellipse(R*.06,R*.18,R*.55,R*.72,0,0,Math.PI*2); ctx.fill();
+
+  // WHITE FACE patch
+  ctx.beginPath(); ctx.ellipse(R*.04,-R*.32,R*.56,R*.48,0,0,Math.PI*2);
+  ctx.fillStyle='#f1f5f9'; ctx.fill();
+
+  // BOW TIE
+  const bx=R*.06, by=R*.52;
+  ctx.fillStyle='#dc2626';
+  // Left wing
+  ctx.beginPath(); ctx.moveTo(bx,by);
+  ctx.bezierCurveTo(bx-R*.3,by-R*.1,bx-R*.35,by+R*.08,bx,by+R*.04);
+  ctx.fill();
+  // Right wing
+  ctx.beginPath(); ctx.moveTo(bx,by);
+  ctx.bezierCurveTo(bx+R*.3,by-R*.1,bx+R*.35,by+R*.08,bx,by+R*.04);
+  ctx.fill();
+  // Knot
+  ctx.fillStyle='#991b1b';
+  ctx.beginPath(); ctx.arc(bx,by+R*.02,R*.055,0,Math.PI*2); ctx.fill();
+
+  // SLEEPY EYES — half-closed
+  [R*.22,R*.42].forEach((oex)=>{
+    const oey=-R*.36;
+    ctx.beginPath(); ctx.arc(oex,oey,R*.22,0,Math.PI*2); ctx.fillStyle='#f1f5f9'; ctx.fill();
+    ctx.beginPath(); ctx.arc(oex+R*.02,oey,R*.12,0,Math.PI*2); ctx.fillStyle='#0f172a'; ctx.fill();
+    ctx.beginPath(); ctx.arc(oex+R*.04,oey,R*.06,0,Math.PI*2); ctx.fillStyle='#000'; ctx.fill();
+    // Heavy drooping eyelid
+    ctx.save();
+    ctx.beginPath(); ctx.arc(oex,oey,R*.24,-Math.PI,0); ctx.fillStyle='#1e293b'; ctx.fill();
+    ctx.restore();
+    ctx.beginPath(); ctx.arc(oex-R*.06,oey-R*.08,R*.05,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.8)'; ctx.fill();
+  });
+
+  // Orange beak — wide flat triangle
+  ctx.beginPath();
+  ctx.moveTo(-R*.12,R*.0);
+  ctx.lineTo(R*.55,R*.0);
+  ctx.lineTo(R*.45,R*.18);
+  ctx.lineTo(-R*.08,R*.15);
+  ctx.closePath();
+  ctx.fillStyle='#fb923c'; ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-R*.10,R*.15);
+  ctx.lineTo(R*.44,R*.18);
+  ctx.lineTo(R*.36,R*.30);
+  ctx.lineTo(-R*.06,R*.26);
+  ctx.closePath();
+  ctx.fillStyle='#f97316'; ctx.fill();
+
+  // Sheen
+  const sh=ctx.createRadialGradient(-R*.38,-R*.44,0,-R*.18,-R*.24,R*.7);
+  sh.addColorStop(0,'rgba(255,255,255,.22)'); sh.addColorStop(1,'transparent');
+  ctx.fillStyle=sh; ctx.beginPath(); ctx.ellipse(0,0,R*.96,R*1.06,0,0,Math.PI*2); ctx.fill();
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 5 · FLAMINGO — very slim body, long S-curve neck, long pink legs visible
+// ─────────────────────────────────────────────────────────────────
+function drawFlamingo(R,T) {
+  // Slim elongated tail
+  [['#e879f9',-0.08,1.5],['#c026d3',-0.28,1.38],['#a21caf',-0.45,1.22]].forEach(([col,a,l])=>{
+    ctx.save(); ctx.translate(-R*.48,R*.1); ctx.rotate(a);
+    ctx.strokeStyle=col; ctx.lineWidth=3; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.quadraticCurveTo(-R*l*.4,R*l*.42,-R*l,R*l*.05);
+    ctx.stroke(); ctx.restore();
+  });
+
+  // Wing — slim, swept back, elegant
+  ctx.save(); ctx.rotate(wingAngle*0.55);
+  ctx.beginPath();
+  ctx.moveTo(-R*.12,R*.06);
+  ctx.bezierCurveTo(-R*.42,-R*.1,-R*1.08,-R*.04,-R*1.18,R*.26);
+  ctx.bezierCurveTo(-R*1.08,R*.52,-R*.42,R*.6,-R*.12,R*.38);
+  ctx.closePath();
+  const wg=ctx.createLinearGradient(-R*1.2,0,0,R*.5);
+  wg.addColorStop(0,'#be185d'); wg.addColorStop(0.4,'#ec4899'); wg.addColorStop(1,'#f9a8d4');
+  ctx.fillStyle=wg; ctx.fill();
+  // Darker primary feathers at wing tip
+  ctx.fillStyle='rgba(157,23,77,.6)';
+  for(let i=0;i<4;i++){
+    ctx.beginPath(); ctx.ellipse(-R*(1.0+i*.06),R*(.2+i*.03),R*.06,R*.18,-.15+i*.05,0,Math.PI*2); ctx.fill();
+  }
   ctx.restore();
+
+  // BODY — very slim teardrop, tilted slightly
+  const bg=ctx.createRadialGradient(-R*.18,-R*.22,R*.04,R*.06,R*.08,R*1.05);
+  bg.addColorStop(0,'#fce7f3'); bg.addColorStop(0.3,'#f9a8d4'); bg.addColorStop(0.65,'#ec4899'); bg.addColorStop(1,'#831843');
+  ctx.fillStyle=bg;
+  ctx.beginPath(); ctx.ellipse(0,0,R*.78,R*1.04,0.12,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,.18)'; ctx.lineWidth=1.2; ctx.stroke();
+
+  // Belly — lighter centre
+  const belly=ctx.createRadialGradient(R*.06,R*.22,0,R*.06,R*.22,R*.44);
+  belly.addColorStop(0,'rgba(252,231,243,.72)'); belly.addColorStop(1,'transparent');
+  ctx.fillStyle=belly; ctx.beginPath(); ctx.ellipse(R*.06,R*.22,R*.36,R*.44,0,0,Math.PI*2); ctx.fill();
+
+  // LONG S-CURVE NECK — drawn as a thick curved path
+  ctx.strokeStyle='#f9a8d4'; ctx.lineWidth=R*.34; ctx.lineCap='round';
+  ctx.beginPath();
+  ctx.moveTo(R*.12,-R*.72);
+  ctx.bezierCurveTo(R*.32,-R*1.18,R*.55,-R*1.32,R*.35,-R*1.62);
+  ctx.stroke();
+  // Neck shading
+  ctx.strokeStyle='rgba(190,24,93,.3)'; ctx.lineWidth=R*.12;
+  ctx.beginPath();
+  ctx.moveTo(R*.2,-R*.8);
+  ctx.bezierCurveTo(R*.36,-R*1.14,R*.52,-R*1.28,R*.36,-R*1.56);
+  ctx.stroke();
+
+  // HEAD — small oval at end of neck
+  ctx.beginPath(); ctx.ellipse(R*.32,-R*1.72,R*.38,R*.32,0.35,0,Math.PI*2);
+  const headG=ctx.createRadialGradient(R*.22,-R*1.8,0,R*.32,-R*1.72,R*.38);
+  headG.addColorStop(0,'#fce7f3'); headG.addColorStop(0.5,'#f9a8d4'); headG.addColorStop(1,'#ec4899');
+  ctx.fillStyle=headG; ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,.15)'; ctx.lineWidth=.9; ctx.stroke();
+
+  // Small dainty eye with eyelash
+  const hx=R*.46, hy=-R*1.78;
+  ctx.beginPath(); ctx.arc(hx,hy,R*.14,0,Math.PI*2); ctx.fillStyle='#fff'; ctx.fill();
+  ctx.beginPath(); ctx.arc(hx+R*.01,hy,R*.08,0,Math.PI*2); ctx.fillStyle='#be185d'; ctx.fill();
+  ctx.beginPath(); ctx.arc(hx+R*.02,hy,R*.04,0,Math.PI*2); ctx.fillStyle='#000'; ctx.fill();
+  ctx.beginPath(); ctx.arc(hx-R*.04,hy-R*.06,R*.04,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fill();
+  // Eyelash
+  ctx.strokeStyle='#831843'; ctx.lineWidth=1.3; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(hx-R*.12,hy-R*.10); ctx.quadraticCurveTo(hx,hy-R*.22,hx+R*.12,hy-R*.12); ctx.stroke();
+
+  // BENT FLAMINGO BEAK — the iconic kinked bill
+  ctx.beginPath();
+  ctx.moveTo(R*.56,-R*1.75);
+  ctx.bezierCurveTo(R*.92,-R*1.76,R*1.08,-R*1.68,R*1.04,-R*1.58);
+  ctx.bezierCurveTo(R*1.0,-R*1.46,R*.82,-R*1.5,R*.52,-R*1.64);
+  ctx.closePath();
+  const bkG=ctx.createLinearGradient(R*.56,-R*1.75,R*1.08,-R*1.56);
+  bkG.addColorStop(0,'#fde68a'); bkG.addColorStop(0.55,'#fb923c'); bkG.addColorStop(1,'#1e1b4b');
+  ctx.fillStyle=bkG; ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,.2)'; ctx.lineWidth=.8; ctx.stroke();
+  // The kink bump
+  ctx.fillStyle='rgba(30,27,75,.4)';
+  ctx.beginPath(); ctx.ellipse(R*.88,-R*1.62,R*.08,R*.06,-.4,0,Math.PI*2); ctx.fill();
+
+  // Sheen
+  const sh=ctx.createRadialGradient(-R*.35,-R*.4,0,-R*.16,-R*.2,R*.68);
+  sh.addColorStop(0,'rgba(255,255,255,.26)'); sh.addColorStop(1,'transparent');
+  ctx.fillStyle=sh; ctx.beginPath(); ctx.ellipse(0,0,R*.78,R*1.04,0.12,0,Math.PI*2); ctx.fill();
 }
 
 function drawHUD() {
